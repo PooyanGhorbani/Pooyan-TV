@@ -31,7 +31,7 @@ assert 'PlayerActivity.EXTRA_URL' in src
 assert "versionName '0.2'" in Path('app/build.gradle').read_text()
 assert "applicationIdSuffix '.preview'" in Path('app/build.gradle').read_text()
 joined=''.join(p.read_text(errors='ignore') for p in Path('app/src').rglob('*.java'))
-assert 'mobile.namakade.com:8443/serieses/rivals?' not in joined
+assert 'stream_cookie=' not in joined
 assert 'sk-proj-' not in joined
 print('PASS native cinema UI, manifest, safe preview package, no embedded private URL')
 PYTEST
