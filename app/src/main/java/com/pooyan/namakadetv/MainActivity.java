@@ -45,6 +45,7 @@ public final class MainActivity extends Activity {
     private String mode="home", returnMode="home", searchTerm="";
     private int generation=0;
     private CatalogMovie activeMovie;
+    private int selectedSeason = -1;
     private CatalogMovie.Episode activeEpisode;
     private boolean destroyed=false;
 
@@ -247,7 +248,7 @@ public final class MainActivity extends Activity {
     }
     private void details(CatalogMovie movie){
         if(!"detail".equals(mode))returnMode=mode;
-        activeMovie=movie; activeEpisode=null;renderDetails(movie,false);
+        activeMovie=movie; activeEpisode=null;selectedSeason=-1;renderDetails(movie,false);
         catalog.detail(movie,(full,error)->{
             if(destroyed||!"detail".equals(mode)||activeMovie==null||!activeMovie.key().equals(movie.key()))return;
             activeMovie=full;renderDetails(full,true);
@@ -285,9 +286,22 @@ public final class MainActivity extends Activity {
             LinearLayout container=vertical();body.addView(container);
             if(m.episodes.isEmpty())container.addView(label("اطلاعات قسمت‌ها موجود نیست.",15,DIM,false),lp(-1,65));
             else{
-                int shown=0;
+                java.util.SortedSet<Integer> seasons = new java.util.TreeSet<>();
+                for (CatalogMovie.Episode episode : m.episodes) if (episode.season > 0) seasons.add(episode.season);
+                if (selectedSeason < 0 && !seasons.isEmpty()) selectedSeason = seasons.first();
+                HorizontalScrollView seasonScroll = new HorizontalScrollView(this);
+                LinearLayout seasonButtons = horizontal();
+                seasonScroll.addView(seasonButtons);
+                container.addView(seasonScroll, lp(-1, 65));
+                for (int season : seasons) {
+                    seasonButtons.addView(action("فصل " + season, selectedSeason == season, () -> {
+                        selectedSeason = season;
+                        renderDetails(m, resolved);
+                    }), lp(115, 52));
+                    spacer(seasonButtons, 10);
+                }
                 for(CatalogMovie.Episode ep:m.episodes){
-                    if(ep.season==0)continue; // exclude specials by default
+                    if(ep.season!=selectedSeason)continue;
                     String key=m.key()+":"+ep.id;
                     String stream=streams.get(key);
                     String n="S"+ep.season+" E"+ep.episode+" · "+ep.title;
@@ -296,7 +310,6 @@ public final class MainActivity extends Activity {
                         else addStream(key,m.title+" — "+n,()->renderDetails(m,resolved));
                     });
                     LinearLayout.LayoutParams p=lp(-1,57);p.bottomMargin=dp(7);container.addView(row,p);
-                    if(++shown>=80)break;
                 }
             }
         }
