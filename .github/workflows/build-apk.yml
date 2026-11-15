@@ -26,12 +26,15 @@ jobs:
       - name: Run offline checks
         run: bash scripts/verify-offline.sh
       - name: Build installable debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug lintDebug
+        run: gradle --no-daemon --stacktrace assembleDebug assembleDebugAndroidTest lintDebug
       - uses: actions/upload-artifact@v4
         with:
           name: pooyan-tv-v0.1-debug-apk
           if-no-files-found: error
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            app/build/reports/lint-results-debug.html
       - name: Publish v0.1 prerelease
         if: github.ref == 'refs/heads/main'
         env:

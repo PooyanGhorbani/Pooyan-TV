@@ -52,11 +52,6 @@ public final class PlayerActivity extends Activity {
     private final Runnable progressSaver = new Runnable() {
         @Override public void run() { saveProgress(); handler.postDelayed(this, 12000); }
     };
-    private final Runnable hideControls = () -> {
-        if (controls != null) controls.setVisibility(View.GONE);
-        if (topPanel != null) topPanel.setVisibility(View.GONE);
-        if (playerView != null) { playerView.setFocusable(true); playerView.requestFocus(); }
-    };
     private LibraryStore library;
     private ExoPlayer player;
     private DefaultTrackSelector trackSelector;
@@ -70,6 +65,12 @@ public final class PlayerActivity extends Activity {
     private boolean zoomMode = false;
     private boolean playerErrorShown = false;
     private boolean resumePlayWhenReady = true;
+
+    private final Runnable hideControls = () -> {
+        if (controls != null) controls.setVisibility(View.GONE);
+        if (topPanel != null) topPanel.setVisibility(View.GONE);
+        if (playerView != null) { playerView.setFocusable(true); playerView.requestFocus(); }
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -348,7 +349,11 @@ public final class PlayerActivity extends Activity {
             int key = e.getKeyCode();
             if (key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || key == KeyEvent.KEYCODE_MEDIA_PLAY ||
                     key == KeyEvent.KEYCODE_MEDIA_PAUSE || key == KeyEvent.KEYCODE_SPACE) {
-                if (e.getRepeatCount() == 0) togglePlayback();
+                if (e.getRepeatCount() == 0 && player != null) {
+                    if (key == KeyEvent.KEYCODE_MEDIA_PLAY) player.play();
+                    else if (key == KeyEvent.KEYCODE_MEDIA_PAUSE) player.pause();
+                    else togglePlayback();
+                }
                 revealControls(); return true;
             }
             if (key == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || key == KeyEvent.KEYCODE_MEDIA_REWIND) {
