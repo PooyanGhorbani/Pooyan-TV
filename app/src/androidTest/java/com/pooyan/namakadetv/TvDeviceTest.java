@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
 public class TvDeviceTest {
     private final Instrumentation inst = InstrumentationRegistry.getInstrumentation();
-    private static final String SAMPLE = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+    private static final String SAMPLE = InstrumentationRegistry.getArguments().getString("sampleUrl", "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4");
     private Object get(Object target, String field) throws Exception {
         Field f = target.getClass().getDeclaredField(field); f.setAccessible(true); return f.get(target);
     }
@@ -100,10 +100,11 @@ public class TvDeviceTest {
                 SystemClock.sleep(1000);
                 long until=SystemClock.uptimeMillis()+18000;
                 String ready="";
+                SystemClock.sleep(5000);
                 while(SystemClock.uptimeMillis()<until) {
                     ready=js(web,"document.readyState"); if(ready.equals("\"complete\""))break; SystemClock.sleep(500);
                 }
-                String status=js(web,"JSON.stringify({ready:document.readyState,title:document.title,error:document.body ? /ERR_|webpage.*not available|سایت.*دسترس نیست/i.test(document.body.innerText) : true})");
+                String status=js(web,"JSON.stringify({ready:document.readyState,title:document.title,url:location.href,error:document.body ? /ERR_|webpage.*not available|سایت.*دسترس نیست/i.test(document.body.innerText) : true})");
                 android.os.Bundle result=new android.os.Bundle();
                 result.putString("stream","SITE "+site.id+" "+status+"\n"); inst.sendStatus(0,result);
                 assertFalse("Activity survives "+site.id,a.isFinishing());

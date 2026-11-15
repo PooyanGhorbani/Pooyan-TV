@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -46,4 +49,6 @@ jobs:
           if ! gh release view v0.1 >/dev/null 2>&1; then
             gh release create v0.1 --prerelease --title "Pooyan TV v0.1" --notes "Installable debug APK. Physical Xiaomi TV testing is documented separately. Debug signatures may change between builds. Never uninstall to bypass a signature mismatch without approval."
           fi
-          gh release upload v0.1 pooyan-tv-v0.1-debug.apk SHA256SUMS.txt --clobber
+          if ! gh release view v0.1 --json assets --jq '.assets[].name' | grep -qx pooyan-tv-v0.1-debug.apk; then
+            gh release upload v0.1 pooyan-tv-v0.1-debug.apk SHA256SUMS.txt
+          fi
