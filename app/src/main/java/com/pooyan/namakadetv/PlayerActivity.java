@@ -41,6 +41,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /** Dedicated Media3 player: progressive/HLS/DASH, quality/audio/captions/resume/remote. */
+@androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
 public final class PlayerActivity extends Activity {
     public static final String EXTRA_URL = "video_url";
     public static final String EXTRA_TITLE = "video_title";

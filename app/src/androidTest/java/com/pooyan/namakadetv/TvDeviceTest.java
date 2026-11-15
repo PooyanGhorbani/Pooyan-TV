@@ -16,6 +16,7 @@ import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** Opt-in physical-device checks. Uses only public sample video and adds no production entry points. */
+@androidx.annotation.OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
 public class TvDeviceTest {
     private final Instrumentation inst = InstrumentationRegistry.getInstrumentation();
     private static final String SAMPLE = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
@@ -74,6 +75,7 @@ public class TvDeviceTest {
             AtomicReference<Long> first=new AtomicReference<>(),later=new AtomicReference<>();
             ui(() -> first.set(p.getCurrentPosition())); SystemClock.sleep(2500);
             ui(() -> later.set(p.getCurrentPosition())); assertTrue(later.get()>first.get()+1000);
+            ui(() -> assertTrue("Video frames rendered",p.getVideoDecoderCounters()!=null && p.getVideoDecoderCounters().renderedOutputBufferCount>0));
             inst.sendKeyDownUpSync(KeyEvent.KEYCODE_MEDIA_PAUSE);
             ui(() -> assertFalse(p.getPlayWhenReady()));
             inst.sendKeyDownUpSync(KeyEvent.KEYCODE_MEDIA_PLAY);
@@ -88,6 +90,27 @@ public class TvDeviceTest {
             finally { ui(resumed::finish); }
         } finally { if(!a.isFinishing()) ui(a::finish); }
     }
+
+    @Test public void sevenWebsitesOnTv() throws Exception {
+        Activity a=launch(MainActivity.class,new Intent());
+        try {
+            WebView web=(WebView)get(a,"web");
+            for(SiteCatalog.Site site:SiteCatalog.all()) {
+                ui(() -> {try {Method m=a.getClass().getDeclaredMethod("openSite",SiteCatalog.Site.class);m.setAccessible(true);m.invoke(a,site);}catch(Exception e){throw new RuntimeException(e);} });
+                SystemClock.sleep(1000);
+                long until=SystemClock.uptimeMillis()+18000;
+                String ready="";
+                while(SystemClock.uptimeMillis()<until) {
+                    ready=js(web,"document.readyState"); if(ready.equals("\"complete\""))break; SystemClock.sleep(500);
+                }
+                String status=js(web,"JSON.stringify({ready:document.readyState,title:document.title,error:document.body ? /ERR_|webpage.*not available|سایت.*دسترس نیست/i.test(document.body.innerText) : true})");
+                android.os.Bundle result=new android.os.Bundle();
+                result.putString("stream","SITE "+site.id+" "+status+"\n"); inst.sendStatus(0,result);
+                assertFalse("Activity survives "+site.id,a.isFinishing());
+            }
+        } finally {ui(a::finish);}
+    }
+
     @Test public void webVideoAndFullscreenFallback() throws Exception {
         Activity a=launch(MainActivity.class,new Intent());
         try {
