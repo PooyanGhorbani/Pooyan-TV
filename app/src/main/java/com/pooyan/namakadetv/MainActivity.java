@@ -70,7 +70,7 @@ public final class MainActivity extends Activity {
     private TextView action(String txt,boolean primary,Runnable click){
         TextView v=label(txt,15,WHITE,true);v.setGravity(Gravity.CENTER);
         v.setPadding(dp(17),dp(11),dp(17),dp(11));
-        v.setFocusable(true);v.setClickable(true);
+        v.setFocusable(true);v.setFocusableInTouchMode(true);v.setClickable(true);
         v.setBackground(panel(primary?0xFF087A77:PANEL,12));
         v.setOnFocusChangeListener((view,focused)->{
             v.setBackground(panel(focused?ACCENT:(primary?0xFF087A77:PANEL),12));

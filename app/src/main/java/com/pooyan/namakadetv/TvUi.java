@@ -46,6 +46,7 @@ public final class TvUi {
         int normal = primary ? 0xFF2456AD : 0xFF242D40;
         v.setBackground(bg(normal, 12, c));
         v.setFocusable(true);
+        v.setFocusableInTouchMode(true);
         v.setClickable(true);
         v.setOnClickListener(view -> onClick.run());
         v.setOnFocusChangeListener((view, focus) -> {
