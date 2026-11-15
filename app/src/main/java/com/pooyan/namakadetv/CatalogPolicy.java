@@ -7,6 +7,15 @@ import java.util.Locale;
 public final class CatalogPolicy {
     public static final String BASE = "https://v3-cinemeta.strem.io";
     private CatalogPolicy() { }
+    public static boolean isCatalogUrl(String url) {
+        try {
+            java.net.URI uri = new java.net.URI(url);
+            return "https".equals(uri.getScheme()) && uri.getRawUserInfo() == null &&
+                    (uri.getPort() == -1 || uri.getPort() == 443) &&
+                    ("v3-cinemeta.strem.io".equals(uri.getHost()) ||
+                     "cinemeta-catalogs.strem.io".equals(uri.getHost()));
+        } catch (Exception e) { return false; }
+    }
     public static String catalog(String type, String genre) {
         String t = validType(type);
         if (genre == null || genre.trim().isEmpty()) return BASE + "/catalog/" + t + "/top.json";

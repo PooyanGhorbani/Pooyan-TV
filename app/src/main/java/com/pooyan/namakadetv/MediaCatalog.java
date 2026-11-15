@@ -64,13 +64,21 @@ public final class MediaCatalog {
         });
     }
     private static String getJson(String url) throws Exception {
-        if(!url.startsWith(CatalogPolicy.BASE+"/"))throw new SecurityException("bad catalog host");
+        for (int hop = 0; hop < 4; hop++) {
+        if(!CatalogPolicy.isCatalogUrl(url))throw new SecurityException("bad catalog host");
         HttpURLConnection connection=(HttpURLConnection)new URL(url).openConnection();
         connection.setConnectTimeout(8000);connection.setReadTimeout(8000);
         connection.setInstanceFollowRedirects(false);
         connection.setRequestProperty("Accept","application/json");
         try {
-            if(connection.getResponseCode()!=200)throw new IllegalStateException("HTTP "+connection.getResponseCode());
+            int code = connection.getResponseCode();
+            if (code >= 300 && code < 400) {
+                String location = connection.getHeaderField("Location");
+                if (location == null) throw new IllegalStateException("Redirect without location");
+                url = new URL(new URL(url), location).toString();
+                continue;
+            }
+            if(code!=200)throw new IllegalStateException("HTTP "+code);
             int announced=connection.getContentLength();
             if(announced>1_500_000)throw new IllegalStateException("too large");
             try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
@@ -79,6 +87,8 @@ public final class MediaCatalog {
                 return out.toString(StandardCharsets.UTF_8.name());
             }
         }finally{connection.disconnect();}
+        }
+        throw new IllegalStateException("Too many catalog redirects");
     }
     public void close(){pool.shutdownNow();}
 }

@@ -242,7 +242,7 @@ public final class MainActivity extends Activity {
         LinearLayout controls=horizontal();box.addView(controls,lp(-1,66));
         controls.addView(action("▶  پخش فیلم",true,()->play(f.title,f.url,"")),lp(180,55));spacer(controls,12);
         controls.addView(action("بازگشت",false,()->goBackTo(prev)),lp(130,55));
-        controls.getChildAt(0).requestFocus();
+        controls.getChildAt(0).post(() -> controls.getChildAt(0).requestFocus());
         setStatus("پخش وابسته به دسترسی شبکه و قابلیت پخش دستگاه است");
     }
     private void details(CatalogMovie movie){
@@ -279,7 +279,7 @@ public final class MainActivity extends Activity {
         spacer(actions,12);
         actions.addView(action("بازگشت",false,()->goBackTo(returnMode)),lp(125,52));
         body.addView(view,lp(-1,-2));
-        if(actions.getChildCount()>0)actions.getChildAt(0).requestFocus();
+        if(actions.getChildCount()>0)actions.getChildAt(0).post(() -> actions.getChildAt(0).requestFocus());
         if("series".equals(m.type)){
             sectionTitle("قسمت‌ها",resolved?"قسمت‌ها را انتخاب کن؛ منبع پخش هر قسمت جداست":"در حال دریافت اطلاعات قسمت‌ها…");
             LinearLayout container=vertical();body.addView(container);

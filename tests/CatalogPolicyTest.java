@@ -2,6 +2,10 @@ import com.pooyan.namakadetv.CatalogPolicy;
 public class CatalogPolicyTest {
   public static void main(String[] args) {
     int n=0;
+    assertTrue(CatalogPolicy.isCatalogUrl("https://cinemeta-catalogs.strem.io/top/catalog/movie/top.json")); n++;
+    assertTrue(!CatalogPolicy.isCatalogUrl("http://cinemeta-catalogs.strem.io/top.json")); n++;
+    assertTrue(!CatalogPolicy.isCatalogUrl("https://v3-cinemeta.strem.io.evil.invalid/top.json")); n++;
+    assertTrue(!CatalogPolicy.isCatalogUrl("https://user@v3-cinemeta.strem.io/top.json")); n++;
     assertTrue(CatalogPolicy.catalog("movie", "").equals("https://v3-cinemeta.strem.io/catalog/movie/top.json")); n++;
     assertTrue(CatalogPolicy.catalog("series", "Sci-Fi").contains("genre=Sci-Fi")); n++;
     assertTrue(CatalogPolicy.search("movie", "فیلم ایرانی").contains("%D9%81")); n++;
