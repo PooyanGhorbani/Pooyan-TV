@@ -10,7 +10,7 @@ public final class StreamDetector {
     public static boolean isDirectMedia(String url) {
         if (!isHttpsUrl(url)) return false;
         String path;
-        try { path = new URI(url).getPath(); } catch (Exception e) { return false; }
+        try { path = new URI(url.trim()).getPath(); } catch (Exception e) { return false; }
         if (path == null) return false;
         String p = path.toLowerCase(Locale.ROOT);
         return p.endsWith(".m3u8") || p.endsWith(".mpd") ||
