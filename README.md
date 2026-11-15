@@ -1,4 +1,4 @@
-# Pooyan TV v0.1
+# Pooyan TV 
 
 اپ Android TV با هفت منبع وب، کنترل ریموت، WebView، پلیر Media3 برای MP4/HLS/DASH، جست‌وجو، علاقه‌مندی و ادامهٔ تماشا.
 
