@@ -15,7 +15,12 @@ public final class TvUi {
     public static final int MUTED = Color.rgb(169, 182, 206);
     private TvUi() {}
 
-    public static int dp(Context c, float n) { return Math.round(n * c.getResources().getDisplayMetrics().density); }
+    private static float layoutScale(Context c) {
+        android.util.DisplayMetrics metrics = c.getResources().getDisplayMetrics();
+        return Math.min(metrics.density, Math.min(metrics.widthPixels / 1280f, metrics.heightPixels / 720f));
+    }
+
+    public static int dp(Context c, float n) { return Math.round(n * layoutScale(c)); }
 
     public static GradientDrawable bg(int color, int radius, Context c) {
         GradientDrawable d = new GradientDrawable();
@@ -25,7 +30,9 @@ public final class TvUi {
 
     public static TextView text(Context c, String t, int size, int color, boolean bold) {
         TextView v = new TextView(c);
-        v.setText(t); v.setTextSize(size); v.setTextColor(color);
+        v.setText(t);
+        v.setTextSize(size * layoutScale(c) / c.getResources().getDisplayMetrics().density);
+        v.setTextColor(color);
         if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         v.setGravity(Gravity.CENTER_VERTICAL);
         return v;

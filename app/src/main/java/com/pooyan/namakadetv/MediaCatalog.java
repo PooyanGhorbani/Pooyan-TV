@@ -36,6 +36,7 @@ public final class MediaCatalog {
                 }
                 if(!url.contains("/search="))cache.edit().putString(url,raw).apply();
             }catch(Exception e){
+                android.util.Log.w("PooyanCatalog", "Catalog request failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 error="اتصال به کاتالوگ برقرار نشد";
                 try {
                     JSONArray arr=new JSONObject(cache.getString(url,"{}")).optJSONArray("metas");
