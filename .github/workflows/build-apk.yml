@@ -72,15 +72,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4.3-preview.apk
-          sha256sum Pooyan-TV-v0.4.3-preview.apk > SHA256SUMS-v0.4.3.txt
+          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4.3-preview-r2.apk
+          sha256sum Pooyan-TV-v0.4.3-preview-r2.apk > SHA256SUMS-v0.4.3-r2.txt
           gh release view v0.4.3 >/dev/null 2>&1 || gh release create v0.4.3 --target dev/v0.4.3-native-playback --prerelease --title 'Pooyan TV v0.4.3' --notes 'Native FarsiPlex playback preview. See docs/V043_PLAYBACK_RESULTS_FA.md for actual results. No v0.4.3 device playback test; no TV installation performed.'
-          if ! gh release view v0.4.3 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.4.3-preview.apk; then
-            gh release upload v0.4.3 Pooyan-TV-v0.4.3-preview.apk
+          if ! gh release view v0.4.3 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.4.3-preview-r2.apk; then
+            gh release upload v0.4.3 Pooyan-TV-v0.4.3-preview-r2.apk SHA256SUMS-v0.4.3-r2.txt
           fi
-
-
-
-
-
-          gh release upload v0.4.3 SHA256SUMS-v0.4.3.txt --clobber

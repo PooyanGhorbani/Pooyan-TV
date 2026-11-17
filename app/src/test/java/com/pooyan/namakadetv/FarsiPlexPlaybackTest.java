@@ -47,4 +47,8 @@ public class FarsiPlexPlaybackTest {
   FarsiPlexTitle t=FarsiPlexParser.details(html,"https://farsiplex.com/tvshow/show/","series");
   assertEquals(1,t.episodes.size());assertEquals("2 - 3 · Episode",t.episodes.get(0).name);assertTrue(t.episodes.get(0).poster.endsWith("ep.jpg"));
  }
+ @Test public void episodeUsesOfficialSameSiteCoverWhenOgHostIsNotAllowed(){
+  String html="<meta property='og:image' content='https://img.farsiplex.com/poster.jpg'><h1>Episode 1</h1><img class='cover' src='/wp-content/uploads/episode-cover.jpg'>";
+  assertEquals("https://farsiplex.com/wp-content/uploads/episode-cover.jpg",FarsiPlexParser.details(html,"https://farsiplex.com/episode/show-01/","episode").poster);
+ }
 }

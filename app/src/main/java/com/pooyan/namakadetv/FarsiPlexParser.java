@@ -55,6 +55,10 @@ public final class FarsiPlexParser {
         Element ogImg=d.selectFirst("meta[property=og:image]");
         if(ogImg!=null)t.poster=FarsiPlexUrlPolicy.normalize(trusted,ogImg.attr("content"));
         if(t.poster.isEmpty()){
+            Element cover=d.selectFirst("img.cover[src]");
+            if(cover!=null)t.poster=imageUrl(trusted,cover);
+        }
+        if(t.poster.isEmpty()){
             for(Element img:d.select("img")){
                 String alt=img.attr("alt");
                 if(!alt.isEmpty() && (alt.contains(title)||title.contains(alt))){t.poster=imageUrl(trusted,img);if(!t.poster.isEmpty())break;}
