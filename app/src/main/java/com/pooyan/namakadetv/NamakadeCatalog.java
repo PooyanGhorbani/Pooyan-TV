@@ -23,7 +23,7 @@ public final class NamakadeCatalog {
             if(path==null||path.length()>300||path.contains(".."))return "";
             // Catalog and metadata only; no dynamic player or arbitrary redirect URLs.
             if(!path.equals("/movies")&&!path.equals("/serial")&&!path.startsWith("/movies/")
-                    &&!path.startsWith("/iran-1-movies/")&&!path.startsWith("/serieses/")
+                    &&!path.startsWith("/iran-1-movies/")&&!path.startsWith("/best-1-movies/")&&!path.startsWith("/serieses/")
                     &&!path.startsWith("/series/"))return "";
             return "https://"+host.toLowerCase(java.util.Locale.ROOT)+u.getRawPath()+(u.getRawQuery()==null?"":"?"+u.getRawQuery());
         }catch(Exception ex){return "";}
@@ -36,7 +36,7 @@ public final class NamakadeCatalog {
             String url=safeUrl(a.absUrl("href"));
             if(url.isEmpty()||!seen.add(url)||url.equals(start(kind)))continue;
             String path=URI.create(url).getPath();
-            if("movie".equals(kind)&&!(path.startsWith("/movies/")||path.startsWith("/iran-1-movies/")))continue;
+            if("movie".equals(kind)&&!(path.startsWith("/movies/")||path.startsWith("/iran-1-movies/")||path.startsWith("/best-1-movies/")))continue;
             if("series".equals(kind)&&!(path.startsWith("/serieses/")||path.startsWith("/series/")))continue;
             String name="";
             for(String selector:new String[]{".SSh3","h3","h4","h2",".title","strong"}){

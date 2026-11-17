@@ -50,15 +50,15 @@ jobs:
         run: POOYAN_LIVE_CHECK=1 gradle --no-daemon testDebugUnitTest --rerun-tasks
       - name: Package preview (no automatic TV installation)
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.5.1-cinematic-preview-r2.apk
-          sha256sum Pooyan-TV-v0.5.1-cinematic-preview-r2.apk > SHA256SUMS-v0.5.1-r2.txt
+          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.5.1-cinematic-preview-r3.apk
+          sha256sum Pooyan-TV-v0.5.1-cinematic-preview-r3.apk > SHA256SUMS-v0.5.1-r3.txt
       - name: Upload preview APK and SHA256
         uses: actions/upload-artifact@v4
         with:
           name: Pooyan-TV-v0.5.1-Cinematic-Preview
           path: |
-            Pooyan-TV-v0.5.1-cinematic-preview-r2.apk
-            SHA256SUMS-v0.5.1-r2.txt
+            Pooyan-TV-v0.5.1-cinematic-preview-r3.apk
+            SHA256SUMS-v0.5.1-r3.txt
           if-no-files-found: error
           retention-days: 30
       - name: Reports
@@ -78,6 +78,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view v0.5.1 >/dev/null 2>&1 || gh release create v0.5.1 --target "$GITHUB_SHA" --prerelease --title 'Pooyan TV v0.5.1 Preview' --notes 'Remote focus, native public source parsing, seek timeline and per-title Continue Watching. See docs/V051_RESULTS_FA.md for tested results and limitations. No Xiaomi device playback claim.'
-          if ! gh release view v0.5.1 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.5.1-cinematic-preview-r2.apk; then
-            gh release upload v0.5.1 Pooyan-TV-v0.5.1-cinematic-preview-r2.apk SHA256SUMS-v0.5.1-r2.txt
+          if ! gh release view v0.5.1 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.5.1-cinematic-preview-r3.apk; then
+            gh release upload v0.5.1 Pooyan-TV-v0.5.1-cinematic-preview-r3.apk SHA256SUMS-v0.5.1-r3.txt
           fi

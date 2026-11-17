@@ -40,6 +40,7 @@ public class LiveSecondarySourceTest {
     String url=NamakadeCatalog.start(kind);List<FarsiPlexTitle> list=NamakadeCatalog.listing(fetch(url).outerHtml(),url,kind);
     assertFalse("Public catalog should have entries",list.isEmpty());
     FarsiPlexTitle entry=list.get(0);
+    out.add("selected-"+kind+"\t"+entry.url.split("\\?")[0]+"\t-\t-\tmetadata-only");
     out.add("listing-"+kind+"\t"+url+"\t"+image(entry.poster)+"\t"+list.size()+"\tnot-a-stream");
     FarsiPlexTitle detail=NamakadeCatalog.details(fetch(entry.url).outerHtml(),entry.url,kind);check(detail,out);
     if(!detail.episodes.isEmpty()){

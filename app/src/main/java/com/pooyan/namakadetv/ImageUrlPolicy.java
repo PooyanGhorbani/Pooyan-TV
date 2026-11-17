@@ -27,7 +27,7 @@ public final class ImageUrlPolicy {
             String itemHost=source.getHost()==null?"":source.getHost().toLowerCase(Locale.ROOT);
             String itemPath=source.getPath()==null?"":source.getPath();
             if(itemHost.equals("namakadeh.com")||itemHost.equals("namakade.com")){
-                if(!itemPath.startsWith("/movies/")&&!itemPath.startsWith("/series/")&&!itemPath.startsWith("/serieses/")&&!itemPath.startsWith("/iran-1-movies/"))return false;
+                if(!itemPath.startsWith("/movies/")&&!itemPath.startsWith("/series/")&&!itemPath.startsWith("/serieses/")&&!itemPath.startsWith("/iran-1-movies/")&&!itemPath.startsWith("/best-1-movies/"))return false;
                 return h.equals("namakadeh.com")||h.equals("namakade.com")||h.equals("media.negahestan.com");
             }
             return !FarsiPlexUrlPolicy.mediaType(item).isEmpty()&&(h.equals("farsiplex.com")||h.equals("www.farsiplex.com"));

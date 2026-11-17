@@ -20,6 +20,12 @@ public class V051RegressionTest {
   String page="https://namakadeh.com/series/show/episodes/one?token=a%2Bb%2Fc%3D";
   assertEquals(page,NamakadeCatalog.safeUrl(page));
  }
+ @Test public void observedPublicMovieRedirectPathAndPosterAreAllowed(){
+  String page="https://namakadeh.com/best-1-movies/drama/example?published=fixture";
+  assertEquals(page,NamakadeCatalog.safeUrl(page));
+  assertTrue(ImageUrlPolicy.allowedFor(page,"https://media.negahestan.com/poster.jpg"));
+  assertEquals("",NamakadeCatalog.safeUrl("https://namakadeh.com/best-1-movies.evil/example"));
+ }
  @Test public void noUntrustedMediaHostOrAuthenticationPaths(){
   assertEquals("",NamakadeCatalog.safeUrl("https://namakadeh.com/auth/login"));
   assertEquals("",NamakadeCatalog.safeUrl("https://namakadeh.com.evil.test/movies/a"));
