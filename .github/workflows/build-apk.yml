@@ -110,13 +110,20 @@ jobs:
             adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb -s emulator-5554 shell am instrument -w -e class 'com.pooyan.namakadetv.TvPremiumInstrumentedTest#profileDataAndRealPreferenceRestartAreIsolated,com.pooyan.namakadetv.TvPremiumInstrumentedTest#homeStartsAndCapturesNativeLayout' com.pooyan.namakadetv.preview060.test/androidx.test.runner.AndroidJUnitRunner > app/build/reports/restart-seed.txt
             grep -Fq 'OK (2 tests)' app/build/reports/restart-seed.txt
+            mkdir -p app/build/reports/emulator-images
+            adb -s emulator-5554 pull /sdcard/Android/data/com.pooyan.namakadetv.preview060/files/emulator-home.png app/build/reports/emulator-images/home.png
+            adb -s emulator-5554 shell run-as com.pooyan.namakadetv.preview060 cat shared_prefs/namakade_local_library_default.xml > app/build/reports/prefs-before.xml
+            adb -s emulator-5554 shell run-as com.pooyan.namakadetv.preview060 cat shared_prefs/family_profiles.xml > app/build/reports/profiles-before.xml
             adb -s emulator-5554 shell am start -W -n com.pooyan.namakadetv.preview060/com.pooyan.namakadetv.MainActivity
             adb -s emulator-5554 shell am force-stop com.pooyan.namakadetv.preview060
             adb -s emulator-5554 shell am start -W -n com.pooyan.namakadetv.preview060/com.pooyan.namakadetv.MainActivity
             sleep 3
             adb -s emulator-5554 shell input keyevent 20
+            sleep 1
             adb -s emulator-5554 shell input keyevent 20
             sleep 1
+            adb -s emulator-5554 shell run-as com.pooyan.namakadetv.preview060 cat shared_prefs/namakade_local_library_default.xml > app/build/reports/prefs-after.xml
+            adb -s emulator-5554 exec-out screencap -p > app/build/reports/emulator-images/restarted.png
             adb -s emulator-5554 shell uiautomator dump /sdcard/pooyan-restart.xml
             adb -s emulator-5554 pull /sdcard/pooyan-restart.xml app/build/reports/pooyan-restart.xml
             grep -q '00:15' app/build/reports/pooyan-restart.xml
@@ -131,6 +138,8 @@ jobs:
             app/build/reports/emulator-images/**
             app/build/reports/pooyan-restart.xml
             app/build/reports/restart-seed.txt
+            app/build/reports/prefs-*.xml
+            app/build/reports/profiles-before.xml
             app/build/outputs/androidTest-results/**
           if-no-files-found: ignore
   publish:

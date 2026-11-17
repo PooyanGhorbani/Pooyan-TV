@@ -54,6 +54,10 @@ public class TvPremiumInstrumentedTest {
   assertTrue(store.edit(null,"Test profile",2));String child=store.list().optJSONObject(store.list().length()-1).optString("id");store.select(child);
   assertEquals(0,new LibraryStore(c).getResumePosition("","https://farsiplex.com/movie/profile/"));ProfileStore.data(c,"player_preferences").edit().putBoolean("autoplay",false).commit();
   store.select(first);assertEquals(15000,new LibraryStore(c).getResumePosition("","https://farsiplex.com/movie/profile/"));assertTrue(store.delete(child));
+  // A process-restart fixture must be durable before the separate shell stops its process.
+  assertTrue(ProfileStore.data(c,"namakade_local_library").edit().putBoolean("restart_fixture",true).commit());
+  assertTrue(c.getSharedPreferences("family_profiles",0).edit().putBoolean("picker",false).commit());
+  System.out.println("RESTART_SEED package="+c.getPackageName()+" data="+c.getApplicationInfo().dataDir+" profile="+store.active()+" position="+new LibraryStore(c).getResumePosition("","https://farsiplex.com/movie/profile/"));
  }
  @Test public void samePackageDefaultMigrationDoesNotEraseLegacyData(){
   Context c=context();ProfileStore store=new ProfileStore(c);store.select("default");c.getSharedPreferences("migration_fixture",0).edit().putString("value","preserved").commit();
