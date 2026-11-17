@@ -53,15 +53,15 @@ jobs:
         run: POOYAN_LIVE_CHECK=1 gradle --no-daemon testDebugUnitTest --rerun-tasks
       - name: Package preview (no automatic TV installation)
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Pooyan-TV-v0.6.0-premium-preview-r2.apk
-          sha256sum Pooyan-TV-v0.6.0-premium-preview-r2.apk > SHA256SUMS-v0.6.0-r2.txt
+          cp app/build/outputs/apk/release/app-release.apk Pooyan-TV-v0.6.0-premium-preview-r3.apk
+          sha256sum Pooyan-TV-v0.6.0-premium-preview-r3.apk > SHA256SUMS-v0.6.0-r3.txt
       - name: Upload preview APK and SHA256
         uses: actions/upload-artifact@v4
         with:
           name: Pooyan-TV-v0.6.0-Premium-Preview
           path: |
-            Pooyan-TV-v0.6.0-premium-preview-r2.apk
-            SHA256SUMS-v0.6.0-r2.txt
+            Pooyan-TV-v0.6.0-premium-preview-r3.apk
+            SHA256SUMS-v0.6.0-r3.txt
           if-no-files-found: error
           retention-days: 30
       - name: Reports
@@ -156,8 +156,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd release
-          sha256sum -c SHA256SUMS-v0.6.0-r2.txt
+          sha256sum -c SHA256SUMS-v0.6.0-r3.txt
           gh release view v0.6.0 >/dev/null 2>&1 || gh release create v0.6.0 --target "$GITHUB_SHA" --prerelease --title 'Pooyan TV v0.6.0 Preview' --notes-file ../docs/V060_RELEASE_FA.md
-          if ! gh release view v0.6.0 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.6.0-premium-preview-r2.apk; then
-            gh release upload v0.6.0 Pooyan-TV-v0.6.0-premium-preview-r2.apk SHA256SUMS-v0.6.0-r2.txt
+          if ! gh release view v0.6.0 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.6.0-premium-preview-r3.apk; then
+            gh release upload v0.6.0 Pooyan-TV-v0.6.0-premium-preview-r3.apk SHA256SUMS-v0.6.0-r3.txt
           fi

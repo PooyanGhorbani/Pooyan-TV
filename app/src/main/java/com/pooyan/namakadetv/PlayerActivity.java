@@ -128,7 +128,7 @@ public final class PlayerActivity extends Activity {
         if(resumePrompt)resumePlayWhenReady=false;
         initLayout();
         if(currentCandidate==null)exhausted(SourceHealth.Failure.NETWORK);else initPlayer();
-        if(resumePrompt)new AlertDialog.Builder(this).setTitle("ادامهٔ تماشا")
+        if(resumePrompt&&currentCandidate!=null)new AlertDialog.Builder(this).setTitle("ادامهٔ تماشا")
             .setMessage("ادامه از "+PlaybackResumePolicy.time(pendingPosition)+" یا تماشا از ابتدا؟")
             .setPositiveButton("ادامه",(d,w)->startChoice(false))
             .setNegativeButton("از ابتدا",(d,w)->startChoice(true))
@@ -276,7 +276,7 @@ public final class PlayerActivity extends Activity {
         if(playerView.getSubtitleView()!=null)playerView.getSubtitleView().setVisibility(View.GONE);
         player.setMediaItem(mediaItem());
         player.addListener(new Player.Listener() {
-            @Override public void onCues(CueGroup group){int delay=profilePrefs.getInt("subtitle_delay",0);if(delay==0)captions.setCues(group.cues);else cueQueue.add(player.getCurrentPosition(),delay,group.cues);}
+            @Override public void onCues(CueGroup group){if(player==null||stopping)return;int delay=profilePrefs.getInt("subtitle_delay",0);if(delay==0)captions.setCues(group.cues);else cueQueue.add(player.getCurrentPosition(),delay,group.cues);}
             @Override public void onPositionDiscontinuity(Player.PositionInfo oldPosition,Player.PositionInfo newPosition,int reason){cueQueue.clear();captions.setCues(java.util.Collections.emptyList());}
             @Override public void onEvents(Player p,Player.Events events){updateTimeline();maybeNext();}
             @Override public void onPlaybackStateChanged(int state) {
@@ -358,8 +358,8 @@ public final class PlayerActivity extends Activity {
         final int index;
         TrackChoice(Tracks.Group g, int i) { group = g; index = i; }
     }
-    private void chooseTrack(int type) {
-        if (player == null || trackSelector == null) return;
+    private AlertDialog chooseTrack(int type) {
+        if (player == null || trackSelector == null) return null;
         String heading = type == C.TRACK_TYPE_VIDEO ? "کیفیت تصویر" :
                 (type == C.TRACK_TYPE_AUDIO ? "زبان صدا" : "زیرنویس");
         List<String> labels = new ArrayList<>();
@@ -382,11 +382,11 @@ public final class PlayerActivity extends Activity {
                 choices.add(new TrackChoice(group, i));
             }
         }
-        if(labels.size()==1&&type==C.TRACK_TYPE_TEXT){toast("این رسانه هنوز زیرنویس قابل انتخاب ارائه نکرده است.");return;}
+        if(labels.size()==1&&type==C.TRACK_TYPE_TEXT){toast("این رسانه هنوز زیرنویس قابل انتخاب ارائه نکرده است.");return null;}
         if (labels.size() == 1 && type != C.TRACK_TYPE_TEXT) {
-            toast("این منبع فقط انتخاب خودکار دارد."); return;
+            toast("این منبع فقط انتخاب خودکار دارد."); return null;
         }
-        new AlertDialog.Builder(this).setTitle(heading)
+        return new AlertDialog.Builder(this).setTitle(heading)
                 .setItems(labels.toArray(new String[0]), (d,n) -> {
                     DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
                             .clearOverridesOfType(type);
@@ -531,8 +531,8 @@ public final class PlayerActivity extends Activity {
         super.onStop();
     }
 
-    private void subtitleSize(){new AlertDialog.Builder(this).setTitle("اندازهٔ زیرنویس این پروفایل").setItems(new String[]{"کوچک","معمولی","بزرگ","خیلی بزرگ"},(d,i)->{float value=new float[]{.8f,1f,1.25f,1.5f}[i];profilePrefs.edit().putFloat("subtitle_size",value).apply();captions.setFractionalTextSize(.0533f*value);}).show();}
-    private void subtitleDelay(){new AlertDialog.Builder(this).setTitle("تأخیر مثبت زیرنویس").setMessage("تأخیر بر اساس زمان رسانه اعمال می‌شود. جلو انداختن زیرنویس پشتیبانی نمی‌شود.").setItems(new String[]{"بدون تأخیر","نیم ثانیه","۱ ثانیه","۲ ثانیه","۳ ثانیه","۵ ثانیه"},(d,i)->{profilePrefs.edit().putInt("subtitle_delay",new int[]{0,500,1000,2000,3000,5000}[i]).apply();cueQueue.clear();captions.setCues(java.util.Collections.emptyList());}).show();}
+    private AlertDialog subtitleSize(){return new AlertDialog.Builder(this).setTitle("اندازهٔ زیرنویس این پروفایل").setItems(new String[]{"کوچک","معمولی","بزرگ","خیلی بزرگ"},(d,i)->{float value=new float[]{.8f,1f,1.25f,1.5f}[i];profilePrefs.edit().putFloat("subtitle_size",value).apply();captions.setFractionalTextSize(.0533f*value);}).show();}
+    private AlertDialog subtitleDelay(){return new AlertDialog.Builder(this).setTitle("تأخیر مثبت؛ جلو انداختن پشتیبانی نمی‌شود").setItems(new String[]{"بدون تأخیر","نیم ثانیه","۱ ثانیه","۲ ثانیه","۳ ثانیه","۵ ثانیه"},(d,i)->{profilePrefs.edit().putInt("subtitle_delay",new int[]{0,500,1000,2000,3000,5000}[i]).apply();cueQueue.clear();captions.setCues(java.util.Collections.emptyList());}).show();}
     private void failover(SourceHealth.Failure reason){
         if(switching||stopping||isFinishing())return;
         cancelNext();if(currentCandidate!=null)SourceHealth.failed(currentCandidate.url,reason,android.os.SystemClock.elapsedRealtime());

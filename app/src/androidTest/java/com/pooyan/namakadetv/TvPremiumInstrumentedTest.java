@@ -51,7 +51,8 @@ public class TvPremiumInstrumentedTest {
  }
  @Test public void profileDataAndRealPreferenceRestartAreIsolated(){
   Context c=context();ProfileStore store=new ProfileStore(c);String first=store.active();LibraryStore original=new LibraryStore(c);original.savePlayback("First","https://example.invalid/profile.mp4","https://farsiplex.com/movie/profile/",15000,100000);
-  assertTrue(store.edit(null,"Test profile",2));String child=store.list().optJSONObject(store.list().length()-1).optString("id");store.select(child);
+  assertTrue(store.edit(null,"Test profile",2));String child=store.list().optJSONObject(store.list().length()-1).optString("id");
+  assertTrue(store.edit(child,"Renamed profile",1));assertEquals("Renamed profile",store.list().optJSONObject(store.list().length()-1).optString("name"));store.select(child);
   assertEquals(0,new LibraryStore(c).getResumePosition("","https://farsiplex.com/movie/profile/"));ProfileStore.data(c,"player_preferences").edit().putBoolean("autoplay",false).commit();
   store.select(first);assertEquals(15000,new LibraryStore(c).getResumePosition("","https://farsiplex.com/movie/profile/"));assertTrue(store.delete(child));
   // A process-restart fixture must be durable before the separate shell stops its process.
@@ -84,6 +85,7 @@ public class TvPremiumInstrumentedTest {
   FarsiPlexPlayback.Result resolved=FarsiPlexPlayback.resolveDetailed(doc);
   org.junit.Assume.assumeTrue("No verified public stream available during emulator test",!resolved.media.isEmpty());
   LibraryStore library=new LibraryStore(context());library.removePlayback(resolved.media,page);
+  android.content.SharedPreferences settings=ProfileStore.data(context(),"player_preferences");int oldDelay=settings.getInt("subtitle_delay",0);float oldSize=settings.getFloat("subtitle_size",1f);
   android.content.Intent intent=new android.content.Intent(context(),PlayerActivity.class).putExtra(PlayerActivity.EXTRA_URL,resolved.media).putExtra(PlayerActivity.EXTRA_PAGE_URL,page).putExtra(PlayerActivity.EXTRA_TITLE,"Live public episode check");
   intent.putExtra("candidates",CandidateCodec.encode(java.util.Arrays.asList(new PlaybackCandidate(resolved.media,page,0,true))));
   final boolean[] decoded={false};final int[] frames={0};final String[] error={""};
@@ -93,9 +95,17 @@ public class TvPremiumInstrumentedTest {
    }
    if(error[0].contains("IO_"))org.junit.Assume.assumeTrue("Live upstream unavailable during playback: "+error[0],false);
    assertTrue("Actual video output required; player error="+error[0],decoded[0]);
-   scenario.onActivity(a->{androidx.media3.exoplayer.ExoPlayer player=(androidx.media3.exoplayer.ExoPlayer)field(a,"player");assertNotNull("Audio format must be detected",player.getAudioFormat());invoke(a,"togglePlayback",new Class[]{});assertFalse(player.getPlayWhenReady());invoke(a,"seekBy",new Class[]{long.class},10000L);assertTrue(player.getCurrentPosition()>=9000);invoke(a,"togglePlayback",new Class[]{});assertTrue(player.getPlayWhenReady());});
-   System.out.println("EMULATOR_MEDIA3: rendered video frames="+frames[0]+"; audio format detected; pause/resume and bounded seek exercised. No physical speaker claim.");
-  }finally{library.forget(page,resolved.media);}
+   scenario.onActivity(a->{
+    androidx.media3.exoplayer.ExoPlayer player=(androidx.media3.exoplayer.ExoPlayer)field(a,"player");assertNotNull("Audio format must be detected",player.getAudioFormat());
+    invoke(a,"togglePlayback",new Class[]{});assertFalse(player.getPlayWhenReady());invoke(a,"seekBy",new Class[]{long.class},10000L);assertTrue(player.getCurrentPosition()>=9000);
+    android.app.AlertDialog delay=(android.app.AlertDialog)invoke(a,"subtitleDelay",new Class[]{});assertNotNull(delay.getListView());assertTrue("Delay choices must be visible",delay.getListView().isShown());assertEquals(6,delay.getListView().getCount());delay.getListView().performItemClick(null,2,2);assertEquals(1000,settings.getInt("subtitle_delay",0));
+    android.app.AlertDialog size=(android.app.AlertDialog)invoke(a,"subtitleSize",new Class[]{});assertEquals(4,size.getListView().getCount());size.getListView().performItemClick(null,2,2);assertEquals(1.25f,settings.getFloat("subtitle_size",1f),.001f);
+    android.app.AlertDialog audio=(android.app.AlertDialog)invoke(a,"chooseTrack",new Class[]{int.class},androidx.media3.common.C.TRACK_TYPE_AUDIO);assertNotNull(audio);assertTrue(audio.getListView().getCount()>1);audio.getListView().performItemClick(null,1,1);
+    android.app.AlertDialog quality=(android.app.AlertDialog)invoke(a,"chooseTrack",new Class[]{int.class},androidx.media3.common.C.TRACK_TYPE_VIDEO);assertNotNull(quality);assertTrue(quality.getListView().getCount()>1);quality.getListView().performItemClick(null,1,1);assertTrue("Track selection must not reset progress",player.getCurrentPosition()>=9000);
+    invoke(a,"togglePlayback",new Class[]{});assertTrue(player.getPlayWhenReady());
+   });
+   System.out.println("EMULATOR_MEDIA3: rendered video frames="+frames[0]+"; audio/video track menus, subtitle size/delay choices, pause/resume and seek exercised. No physical speaker or actual subtitle-track claim.");
+  }finally{library.forget(page,resolved.media);settings.edit().putInt("subtitle_delay",oldDelay).putFloat("subtitle_size",oldSize).apply();}
  }
  @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
