@@ -104,7 +104,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            gradle --no-daemon connectedDebugAndroidTest
+            gradle --no-daemon connectedDebugAndroidTest || { status=$?; mkdir -p app/build/reports/emulator-images; adb pull /sdcard/Android/data/com.pooyan.namakadetv.preview060/files/emulator-home.png app/build/reports/emulator-images/home.png || true; exit "$status"; }
             adb shell am start -W -n com.pooyan.namakadetv.preview060/com.pooyan.namakadetv.MainActivity
             adb shell am force-stop com.pooyan.namakadetv.preview060
             adb shell am start -W -n com.pooyan.namakadetv.preview060/com.pooyan.namakadetv.MainActivity

@@ -15,25 +15,38 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Runs only on CI Android TV emulator. Fixture pages do not assert media playback. */
 @RunWith(AndroidJUnit4.class)
 public class TvPremiumInstrumentedTest {
- @Before public void pickerOff(){context().getSharedPreferences("family_profiles",0).edit().putBoolean("picker",false).commit();}
+ @Before public void pickerOff(){InstrumentationRegistry.getInstrumentation().setInTouchMode(false);context().getSharedPreferences("family_profiles",0).edit().putBoolean("picker",false).commit();}
  private Context context(){return InstrumentationRegistry.getInstrumentation().getTargetContext();}
  private Object field(Object owner,String name){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(owner);}catch(Exception e){throw new AssertionError(e);}}
  private void set(Object owner,String name,Object value){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);f.set(owner,value);}catch(Exception e){throw new AssertionError(e);}}
  private Object invoke(Object owner,String name,Class<?>[] types,Object...args){try{Method m=owner.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(owner,args);}catch(Exception e){throw new AssertionError(e);}}
- private void key(MainActivity a,int code){a.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,code));a.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,code));}
+ private void key(int code){InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(code);InstrumentationRegistry.getInstrumentation().waitForIdleSync();}
  @Test public void posterOrderDirectionAndSelectAreStable(){
+  final LinearLayout[] rows=new LinearLayout[2];AtomicInteger clicks=new AtomicInteger();
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
-   scenario.onActivity(a->{set(a,"destroyed",true);invoke(a,"begin",new Class[]{String.class},"movies");LinearLayout content=(LinearLayout)field(a,"content");LinearLayout first=new LinearLayout(a),second=new LinearLayout(a);content.addView(first);content.addView(second);
-    for(int i=0;i<5;i++)invoke(a,"card",new Class[]{LinearLayout.class,FarsiPlexTitle.class},i<3?first:second,new FarsiPlexTitle("https://farsiplex.com/movie/fixture-"+i+"/","movie","Fixture "+i));
-    View initial=first.getChildAt(0);initial.requestFocus();key(a,KeyEvent.KEYCODE_DPAD_RIGHT);assertTrue(first.getChildAt(1).isFocused());assertSame(initial,first.getChildAt(0));
-    key(a,KeyEvent.KEYCODE_DPAD_DOWN);assertTrue(second.getChildAt(1).isFocused());key(a,KeyEvent.KEYCODE_DPAD_UP);assertTrue(first.getChildAt(1).isFocused());
-    AtomicInteger clicks=new AtomicInteger();first.getChildAt(1).setOnClickListener(v->clicks.incrementAndGet());key(a,KeyEvent.KEYCODE_DPAD_CENTER);assertEquals(1,clicks.get());
+   scenario.onActivity(a->{
+    set(a,"destroyed",true);invoke(a,"begin",new Class[]{String.class},"movies");LinearLayout content=(LinearLayout)field(a,"content");
+    for(int n=0;n<2;n++){rows[n]=new LinearLayout(a);content.addView(rows[n]);}
+    for(int i=0;i<5;i++)invoke(a,"card",new Class[]{LinearLayout.class,FarsiPlexTitle.class},rows[i<3?0:1],new FarsiPlexTitle("https://farsiplex.com/movie/fixture-"+i+"/","movie","Fixture "+i));
+    rows[0].getChildAt(1).setOnClickListener(v->clicks.incrementAndGet());
    });
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+   scenario.onActivity(a->assertTrue("Initial poster must accept remote focus",rows[0].getChildAt(0).requestFocus()));
+   key(KeyEvent.KEYCODE_DPAD_RIGHT);
+   scenario.onActivity(a->{assertTrue("RIGHT selects second poster",rows[0].getChildAt(1).isFocused());assertEquals("https://farsiplex.com/movie/fixture-0/",rows[0].getChildAt(0).getTag());});
+   key(KeyEvent.KEYCODE_DPAD_DOWN);scenario.onActivity(a->assertTrue("DOWN keeps column",rows[1].getChildAt(1).isFocused()));
+   key(KeyEvent.KEYCODE_DPAD_UP);scenario.onActivity(a->assertTrue("UP returns to same column",rows[0].getChildAt(1).isFocused()));
+   key(KeyEvent.KEYCODE_DPAD_CENTER);assertEquals(1,clicks.get());
   }
  }
  @Test public void episodeBackRestoresChosenEpisode(){
+  String episode="https://farsiplex.com/episode/fixture-02/";
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
-   scenario.onActivity(a->{set(a,"destroyed",true);FarsiPlexTitle series=new FarsiPlexTitle("https://farsiplex.com/tvshow/fixture/","series","Fixture");FarsiPlexTitle ep=new FarsiPlexTitle("https://farsiplex.com/episode/fixture-02/","episode","1 - 2");series.episodes.add(ep);set(a,"selected",series);invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},series,true);FrameLayout root=(FrameLayout)field(a,"root");View row=root.findViewWithTag(ep.url);row.requestFocus();key(a,KeyEvent.KEYCODE_DPAD_CENTER);assertEquals(ep.url,((FarsiPlexTitle)field(a,"selected")).url);a.onBackPressed();assertTrue(root.findViewWithTag(ep.url).isFocused());});
+   scenario.onActivity(a->{set(a,"destroyed",true);FarsiPlexTitle series=new FarsiPlexTitle("https://farsiplex.com/tvshow/fixture/","series","Fixture");series.episodes.add(new FarsiPlexTitle(episode,"episode","1 - 2"));set(a,"selected",series);invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},series,true);});
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+   scenario.onActivity(a->assertTrue("Episode row must accept focus",((FrameLayout)field(a,"root")).findViewWithTag(episode).requestFocus()));
+   key(KeyEvent.KEYCODE_DPAD_CENTER);scenario.onActivity(a->assertEquals(episode,((FarsiPlexTitle)field(a,"selected")).url));
+   key(KeyEvent.KEYCODE_BACK);scenario.onActivity(a->assertTrue("Back restores chosen episode",((FrameLayout)field(a,"root")).findViewWithTag(episode).isFocused()));
   }
  }
  @Test public void profileDataAndRealPreferenceRestartAreIsolated(){
