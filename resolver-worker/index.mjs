@@ -119,6 +119,9 @@ export async function handle(request,env,fetcher=fetch){
   try {input=await request.json();} catch {return json({error:'Invalid JSON'},400);}
   const page=publicPage(input.pageUrl);
   if(!page||typeof input.title!=='string'||input.title.length>128)return json({error:'Invalid page/title'},400);
+  const controller=new AbortController();
+  const deadline=setTimeout(()=>controller.abort(),16000);
+  const upstream=fetcher;fetcher=(url,options={})=>upstream(url,{...options,signal:controller.signal});
   try {
     const initialHtml=await fetchPublicHtml(page,fetcher);
     if(initialHtml===null)return json({status:'unavailable',reason:'Official public page is inaccessible or not HTML',searchUsed:false});
@@ -135,6 +138,7 @@ export async function handle(request,env,fetcher=fetch){
     }
     return json({status:'unavailable',searchUsed:search.attempted,
       reason:search.warning||'No verified public direct media URL; an official playback integration may be required'});
-  }catch(e){return json({status:'error',reason:String(e?.message||e).slice(0,180)},502);}
+  }catch(e){return json({status:'error',reason:String(e?.message||e).slice(0,180)},502);}finally{clearTimeout(deadline);}
 }
 export default {async fetch(request,env){return handle(request,env);}};
+
