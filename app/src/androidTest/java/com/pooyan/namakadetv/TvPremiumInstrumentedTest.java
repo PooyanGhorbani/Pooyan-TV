@@ -62,6 +62,37 @@ public class TvPremiumInstrumentedTest {
  @Test public void historyPersistenceAndConfirmedRemovalArePerItem(){
   LibraryStore library=new LibraryStore(context());library.savePlayback("One","https://example.invalid/history.mp4","https://farsiplex.com/movie/history/",20000,100000);assertEquals(20000,new LibraryStore(context()).getResumePosition("","https://farsiplex.com/movie/history/"));library.forget("https://farsiplex.com/movie/history/","https://example.invalid/history.mp4");assertEquals(0,new LibraryStore(context()).getResumePosition("","https://farsiplex.com/movie/history/"));
  }
+ @Test public void continueWatchingParticipatesInRemoteTraversal(){
+  LibraryStore library=new LibraryStore(context());String page="https://farsiplex.com/movie/continue-fixture/";
+  library.savePlayback("Continue fixture","https://example.invalid/continue.mp4",page,20000,100000);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+   scenario.onActivity(a->{set(a,"destroyed",true);LinearLayout content=(LinearLayout)field(a,"content");View slot=(View)field(a,"continueSlot");for(int i=content.getChildCount()-1;i>content.indexOfChild(slot);i--)content.removeViewAt(i);LinearLayout row=new LinearLayout(a);content.addView(row);invoke(a,"card",new Class[]{LinearLayout.class,FarsiPlexTitle.class},row,new FarsiPlexTitle("https://farsiplex.com/movie/after-resume/","movie","After resume"));});
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();key(KeyEvent.KEYCODE_DPAD_DOWN);key(KeyEvent.KEYCODE_DPAD_DOWN);
+   scenario.onActivity(a->assertEquals("resume:"+PlaybackResumePolicy.identity("",page),a.getCurrentFocus().getTag()));
+   key(KeyEvent.KEYCODE_DPAD_DOWN);scenario.onActivity(a->assertEquals("https://farsiplex.com/movie/after-resume/",a.getCurrentFocus().getTag()));
+   key(KeyEvent.KEYCODE_DPAD_UP);scenario.onActivity(a->assertEquals("resume:"+PlaybackResumePolicy.identity("",page),a.getCurrentFocus().getTag()));
+  }finally{library.forget(page,"https://example.invalid/continue.mp4");}
+ }
+ @Test @androidx.annotation.OptIn(markerClass=androidx.media3.common.util.UnstableApi.class)
+ public void publicNativeEpisodeMedia3WhenAvailable()throws Exception{
+  String page="https://farsiplex.com/episode/meymoone-mast-ep01/";org.jsoup.nodes.Document doc;
+  try{doc=org.jsoup.Jsoup.connect(page).timeout(12000).maxBodySize(1800000).followRedirects(false).get();}catch(Exception e){org.junit.Assume.assumeTrue("Public live page unavailable; no device playback claim",false);return;}
+  FarsiPlexPlayback.Result resolved=FarsiPlexPlayback.resolveDetailed(doc);
+  org.junit.Assume.assumeTrue("No verified public stream available during emulator test",!resolved.media.isEmpty());
+  LibraryStore library=new LibraryStore(context());library.removePlayback(resolved.media,page);
+  android.content.Intent intent=new android.content.Intent(context(),PlayerActivity.class).putExtra(PlayerActivity.EXTRA_URL,resolved.media).putExtra(PlayerActivity.EXTRA_PAGE_URL,page).putExtra(PlayerActivity.EXTRA_TITLE,"Live public episode check");
+  intent.putExtra("candidates",CandidateCodec.encode(java.util.Arrays.asList(new PlaybackCandidate(resolved.media,page,0,true))));
+  final boolean[] decoded={false};final int[] frames={0};final String[] error={""};
+  try(ActivityScenario<PlayerActivity> scenario=ActivityScenario.launch(intent)){
+   for(int n=0;n<60&&!decoded[0]&&error[0].isEmpty();n++){
+    Thread.sleep(500);scenario.onActivity(a->{androidx.media3.exoplayer.ExoPlayer player=(androidx.media3.exoplayer.ExoPlayer)field(a,"player");if(player==null)return;if(player.getPlayerError()!=null)error[0]=player.getPlayerError().getErrorCodeName();androidx.media3.exoplayer.DecoderCounters counters=player.getVideoDecoderCounters();if(counters!=null){counters.ensureUpdated();frames[0]=counters.renderedOutputBufferCount;}decoded[0]=frames[0]>0&&player.getCurrentPosition()>1000;});
+   }
+   if(error[0].contains("IO_"))org.junit.Assume.assumeTrue("Live upstream unavailable during playback: "+error[0],false);
+   assertTrue("Actual video output required; player error="+error[0],decoded[0]);
+   scenario.onActivity(a->{androidx.media3.exoplayer.ExoPlayer player=(androidx.media3.exoplayer.ExoPlayer)field(a,"player");assertNotNull("Audio format must be detected",player.getAudioFormat());invoke(a,"togglePlayback",new Class[]{});assertFalse(player.getPlayWhenReady());invoke(a,"seekBy",new Class[]{long.class},10000L);assertTrue(player.getCurrentPosition()>=9000);invoke(a,"togglePlayback",new Class[]{});assertTrue(player.getPlayWhenReady());});
+   System.out.println("EMULATOR_MEDIA3: rendered video frames="+frames[0]+"; audio format detected; pause/resume and bounded seek exercised. No physical speaker claim.");
+  }finally{library.forget(page,resolved.media);}
+ }
  @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
    InstrumentationRegistry.getInstrumentation().waitForIdleSync();Thread.sleep(2500);

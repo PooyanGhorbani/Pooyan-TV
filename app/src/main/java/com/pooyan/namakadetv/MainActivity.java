@@ -196,7 +196,7 @@ public final class MainActivity extends Activity {
         if(continueSlot==null)return;
         continueSlot.removeAllViews();
         List<LibraryStore.Entry> entries=new LibraryStore(this).resumeList();
-        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);
+        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);row.setTag("poster-row");
         HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);slider.addView(row);
         int count=0;
         for(LibraryStore.Entry entry:entries){
