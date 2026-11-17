@@ -69,11 +69,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4.2-playback.apk
+          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4.2-playback-r2.apk
           gh release view v0.4.2 >/dev/null 2>&1 || gh release create v0.4.2 --target dev/v0.4.2-deepseek --prerelease --title 'Pooyan TV v0.4.2' --notes 'Native TV preview. DeepSeek requires configured Worker secrets. FarsiPlex streaming is not verified.'
-          if ! gh release view v0.4.2 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.4.2-playback.apk; then
-            gh release upload v0.4.2 Pooyan-TV-v0.4.2-playback.apk
+          if ! gh release view v0.4.2 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.4.2-playback-r2.apk; then
+            gh release upload v0.4.2 Pooyan-TV-v0.4.2-playback-r2.apk
           fi
+
 
 
 

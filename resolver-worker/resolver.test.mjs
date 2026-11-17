@@ -83,3 +83,9 @@ test('public watch does not follow an external redirect or escalate inaccessible
  const data=await (await handle(request(),{TV_ACCESS_TOKEN:env.TV_ACCESS_TOKEN},mock)).json();
  assert.equal(data.status,'unavailable');
 });
+import {jwCandidates} from './index.mjs';
+test('JW JSON handles semicolons, escaped quotes and braces inside strings',()=>{
+ const config={file:'https://pl.farsiplex.buzz/test.mp4?value=a;b',note:'quoted " } ; text'};
+ assert.equal(jwCandidates('var jw = '+JSON.stringify(config)+';',{}).length,1);
+ assert.equal(jwCandidates('var jw = {broken};',{}).length,0);
+});

@@ -34,9 +34,16 @@ public final class FarsiPlexPlayback {
     if(!"https".equals(u.getScheme())||!"farsiplex.com".equals(u.getHost())||!"/jwplayer/".equals(u.getPath())||u.getUserInfo()!=null||u.getPort()!=-1)continue;
     Connection.Response response=Jsoup.connect(src).cookies(cookies).followRedirects(false).ignoreHttpErrors(true).timeout(9000).maxBodySize(600000).execute();
     if(response.statusCode()!=200)continue;
-    Matcher m=Pattern.compile("var\\s+jw\\s*=\\s*(\\{[^;]*\\})\\s*;",Pattern.DOTALL).matcher(response.body());
-    if(!m.find())continue;
-    JSONObject config=new JSONObject(m.group(1));
+    String html=response.body();Matcher marker=Pattern.compile("var\\s+jw\\s*=\\s*\\{").matcher(html);
+    if(!marker.find())continue;
+    int begin=marker.end()-1,end=-1,depth=0;boolean quoted=false,escaped=false;
+    for(int i=begin;i<html.length();i++){
+     char ch=html.charAt(i);
+     if(quoted){if(escaped)escaped=false;else if(ch=='\\')escaped=true;else if(ch=='"')quoted=false;}
+     else if(ch=='"')quoted=true;else if(ch=='{')depth++;else if(ch=='}'&&--depth==0){end=i+1;break;}
+    }
+    if(end<0)continue;
+    JSONObject config=new JSONObject(html.substring(begin,end));
     String media=config.optString("file","");
     URI target=new URI(media);
     if("https".equals(target.getScheme())&&"pl.farsiplex.buzz".equals(target.getHost())&&target.getPort()==-1&&target.getUserInfo()==null&&MediaProbe.valid(media))return media;
@@ -45,3 +52,4 @@ public final class FarsiPlexPlayback {
   return "";
  }
 }
+

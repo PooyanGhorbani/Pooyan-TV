@@ -110,9 +110,15 @@ async function searchOfficialPages(page,title,env,fetcher){
   return {pages:pages.slice(0,2),attempted:true,warning:''};
 }
 export function jwCandidates(html,env){
- const match=html.match(/var\s+jw\s*=\s*(\{[^;]*\})\s*;/s);
- if(!match)return [];
- try{const c=JSON.parse(match[1]);return [c.file].filter(u=>typeof u==='string'&&directMedia(u)&&mediaHostAllowed(u,env));}catch{return [];}
+ const marker=/var\s+jw\s*=\s*\{/.exec(html);if(!marker)return [];
+ const start=marker.index+marker[0].length-1;let depth=0,quoted=false,escaped=false,end=-1;
+ for(let i=start;i<html.length;i++){
+  const ch=html[i];
+  if(quoted){if(escaped)escaped=false;else if(ch==='\\')escaped=true;else if(ch==='"')quoted=false;}
+  else if(ch==='"')quoted=true;else if(ch==='{')depth++;else if(ch==='}'&&--depth===0){end=i+1;break;}
+ }
+ if(end<0)return [];
+ try{const c=JSON.parse(html.slice(start,end));return [c.file].filter(u=>typeof u==='string'&&directMedia(u)&&mediaHostAllowed(u,env));}catch{return [];}
 }
 async function publicWatch(html,env,fetcher){
  const form=(html.match(/<form\b[^>]*id=['"]watch-\d+['"][^>]*>[\s\S]*?<\/form>/i)||[])[0];
@@ -173,5 +179,6 @@ export async function handle(request,env,fetcher=fetch){
   }catch(e){return json({status:'error',reason:String(e?.message||e).slice(0,180)},502);}finally{clearTimeout(deadline);}
 }
 export default {async fetch(request,env){return handle(request,env);}};
+
 
 
