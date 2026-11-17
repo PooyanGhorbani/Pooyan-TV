@@ -8,18 +8,22 @@ android {
 
     defaultConfig {
         applicationId 'com.pooyan.namakadetv'
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         minSdk 23
         targetSdk 35
-        versionCode 21
-        versionName '0.5.1'
+        versionCode 30
+        versionName '0.6.0'
     }
 
     buildTypes {
         debug {
             // Side-by-side preview: never requires uninstalling the user's v0.1 app.
-            applicationIdSuffix '.preview051'
+            applicationIdSuffix '.preview060'
         }
         release {
+            applicationIdSuffix ".preview060"
+            signingConfig signingConfigs.debug
+            debuggable false
             minifyEnabled false
         }
     }
@@ -36,6 +40,8 @@ dependencies {
     implementation 'org.jsoup:jsoup:1.18.3'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
     // Media3 supports progressive MP4, HLS and DASH with native TV playback.
     implementation 'androidx.media3:media3-exoplayer:1.6.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.6.1'

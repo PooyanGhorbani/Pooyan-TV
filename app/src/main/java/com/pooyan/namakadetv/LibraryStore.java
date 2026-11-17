@@ -23,7 +23,7 @@ public final class LibraryStore {
 
     private final SharedPreferences preferences;
     public LibraryStore(Context c) {
-        preferences = c.getSharedPreferences("namakade_local_library", Context.MODE_PRIVATE);
+        preferences = ProfileStore.data(c,"namakade_local_library");
     }
 
     LibraryStore(SharedPreferences preferences){this.preferences=preferences;}
@@ -62,7 +62,7 @@ public final class LibraryStore {
 
     private void upsert(String key, Entry e, int limit) {
         List<Entry> list = read(key);
-        list.removeIf(item -> "resume".equals(key) ? PlaybackResumePolicy.identity(item.url,item.pageUrl).equals(PlaybackResumePolicy.identity(e.url,e.pageUrl)) : item.url.equals(e.url));
+        list.removeIf(item -> ("resume".equals(key)||"watched".equals(key)||"completed".equals(key)) ? PlaybackResumePolicy.identity(item.url,item.pageUrl).equals(PlaybackResumePolicy.identity(e.url,e.pageUrl)) : item.url.equals(e.url));
         list.add(0, e);
         write(key, list, limit);
     }
@@ -96,7 +96,7 @@ public final class LibraryStore {
         for (Entry e : bookmarks()) if (e.url.equals(url)) return true;
         return false;
     }
-    public long getResumePosition(String videoUrl) {return getResumePosition(videoUrl,"");}
+    public long getResumePosition(String videoUrl) {for(Entry e:resumeList())if(e.url.equals(videoUrl))return e.positionMs;return 0;}
     public long getResumePosition(String videoUrl,String pageUrl) {
         String id=PlaybackResumePolicy.identity(videoUrl,pageUrl);
         for(Entry e:resumeList())if(PlaybackResumePolicy.identity(e.url,e.pageUrl).equals(id))return e.positionMs;
@@ -110,11 +110,27 @@ public final class LibraryStore {
     }
     public void savePlayback(String title,String streamUrl,String pageUrl,long position,long duration){
         if(!StreamDetector.isHttpsUrl(streamUrl))return;
-        if(position<=0||PlaybackResumePolicy.completed(position,duration)){removePlayback(streamUrl,pageUrl);return;}
+        if(position<=0)return;
+        boolean complete=duration>0&&position>=duration*(preferences.getInt("completion",97)/100d);
+        Entry history=new Entry(title,streamUrl,pageUrl,position,Math.max(0,duration),System.currentTimeMillis());
+        upsert("watched",history,200);
+        if(complete){upsert("completed",history,200);removePlayback(streamUrl,pageUrl);return;}
         String poster="";
         for(Entry e:recentPages())if(e.url.equals(pageUrl)){poster=e.posterUrl;break;}
         upsert("resume",new Entry(title,streamUrl,pageUrl,Math.max(0,position),Math.max(0,duration),System.currentTimeMillis(),poster),40);
     }
+    public List<Entry> watched(){return read("watched");}
+    public List<Entry> completed(){return read("completed");}
+    public void complete(String title,String stream,String page,long duration){
+        Entry entry=new Entry(title,stream,page,Math.max(0,duration),Math.max(0,duration),System.currentTimeMillis());
+        upsert("watched",entry,200);upsert("completed",entry,200);removePlayback(stream,page);
+    }
+    public void forget(String page,String stream){
+        String id=PlaybackResumePolicy.identity(stream,page);
+        for(String key:new String[]{"watched","completed","resume"}){List<Entry> list=read(key);list.removeIf(e->PlaybackResumePolicy.identity(e.url,e.pageUrl).equals(id));write(key,list,200);}
+    }
+    public void clearHistory(){preferences.edit().remove("watched").remove("completed").remove("resume").apply();}
+    public void completion(int percent){preferences.edit().putInt("completion",Math.max(90,Math.min(99,percent))).apply();}
     public void clear() {
         preferences.edit().clear().apply();
     }

@@ -8,6 +8,8 @@ javac -d "$TMP" \
  app/src/main/java/com/pooyan/namakadetv/PlaybackResumePolicy.java \
  app/src/main/java/com/pooyan/namakadetv/FarsiPlexUrlPolicy.java \
  app/src/main/java/com/pooyan/namakadetv/FarsiPlexTitle.java \
+ app/src/main/java/com/pooyan/namakadetv/PlaybackCandidate.java \
+ app/src/main/java/com/pooyan/namakadetv/SearchPolicy.java \
  app/src/main/java/com/pooyan/namakadetv/CatalogIdentity.java \
  app/src/main/java/com/pooyan/namakadetv/CatalogMerge.java \
  app/src/main/java/com/pooyan/namakadetv/ImageUrlPolicy.java \
@@ -42,8 +44,8 @@ assert 'source.list(' in main and 'source.detail(' in main and 'source.search(' 
 assert 'TvPosterFocusPolicy' in main and 'requestFocus' in main
 assert 'FarsiPlexPlayback.resolveDetailed' in sources
 assert 'PlayerActivity.EXTRA_URL' in main
-assert "versionName '0.5.1'" in gradle
-assert "applicationIdSuffix '.preview051'" in gradle
+assert "versionName '0.6.0'" in gradle
+assert "applicationIdSuffix '.preview060'" in gradle
 assert 'sk-proj-' not in sources and 'DEEPSEEK_API_KEY' not in sources
 assert 'AiResolverClient' in main and 'resolveWithAI' in main
 assert 'bringToFront()' not in main, 'Focus must never reorder poster children'

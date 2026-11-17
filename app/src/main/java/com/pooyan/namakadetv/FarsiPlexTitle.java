@@ -7,6 +7,10 @@ import java.util.List;
 public final class FarsiPlexTitle {
     public final String url,kind;
     public String name,poster="",description="",year="",genre="",publicStream="",playbackError="";
+    public int season,episode;
+    public String stableId="";
+    public final List<String> aliases=new ArrayList<>();
+    public final List<PlaybackCandidate> candidates=new ArrayList<>();
     public final List<FarsiPlexTitle> episodes=new ArrayList<>();
     public FarsiPlexTitle(String url,String kind,String name) {
         this.url=url;this.kind=kind;this.name=name;

@@ -14,6 +14,7 @@ public class CatalogIdentityTest {
  @Test public void deduplicatesRetainingPrimary(){
   FarsiPlexTitle first=new FarsiPlexTitle("https://farsiplex.com/series/meymoone-mast","series","میمون مست");
   FarsiPlexTitle second=new FarsiPlexTitle("https://namakadeh.com/serieses/meymoone-mast","series","میمون، مست");
+  first.year="2026";second.year="2026";
   Map<String,List<FarsiPlexTitle>> variants=new HashMap<>();
   List<FarsiPlexTitle> out=CatalogMerge.join(Arrays.asList(first),Arrays.asList(second),variants);
   assertEquals(1,out.size());assertEquals(first.url,out.get(0).url);

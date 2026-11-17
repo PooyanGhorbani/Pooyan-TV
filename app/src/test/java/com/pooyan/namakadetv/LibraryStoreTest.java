@@ -8,16 +8,18 @@ import java.util.Map;
 
 /** Exercises real LibraryStore JSON persistence across new instances, without Android disk I/O. */
 public class LibraryStoreTest {
- private SharedPreferences memory(){
-  Map<String,String> values=new HashMap<>();
-  SharedPreferences.Editor editor=(SharedPreferences.Editor)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{SharedPreferences.Editor.class},(p,m,a)->{
-   if(m.getName().equals("putString"))values.put((String)a[0],(String)a[1]);
+ static SharedPreferences memory(){
+  Map<String,Object> values=new HashMap<>();
+  SharedPreferences.Editor editor=(SharedPreferences.Editor)Proxy.newProxyInstance(LibraryStoreTest.class.getClassLoader(),new Class[]{SharedPreferences.Editor.class},(p,m,a)->{
+   if(m.getName().startsWith("put"))values.put((String)a[0],a[1]);
+   if(m.getName().equals("remove"))values.remove((String)a[0]);
    if(m.getName().equals("commit"))return true;
    if(m.getName().equals("apply"))return null;
    return p;
   });
-  return (SharedPreferences)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{SharedPreferences.class},(p,m,a)->{
-   if(m.getName().equals("getString"))return values.getOrDefault((String)a[0],(String)a[1]);
+  return (SharedPreferences)Proxy.newProxyInstance(LibraryStoreTest.class.getClassLoader(),new Class[]{SharedPreferences.class},(p,m,a)->{
+   if(m.getName().startsWith("get")&&a!=null&&a.length==2)return values.getOrDefault((String)a[0],a[1]);
+   if(m.getName().equals("getAll"))return values;
    if(m.getName().equals("edit"))return editor;
    throw new UnsupportedOperationException(m.getName());
   });

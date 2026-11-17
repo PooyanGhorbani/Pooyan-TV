@@ -22,10 +22,26 @@ public final class CatalogImages {
     public CatalogImages(Activity a){activity=a;}
     private static boolean isPoster(String url){return ImageUrlPolicy.allowed(url);}
     public void load(ImageView view,String url){
+        if(!isPoster(url))return;view.setTag(url);
+        Bitmap cached=memory.get(url);if(cached!=null){view.setImageBitmap(cached);return;}
+        final boolean[] queued={false};
+        android.view.ViewTreeObserver.OnPreDrawListener listener=new android.view.ViewTreeObserver.OnPreDrawListener(){
+            public boolean onPreDraw(){if(!url.equals(view.getTag())){if(view.getViewTreeObserver().isAlive())view.getViewTreeObserver().removeOnPreDrawListener(this);return true;}
+                android.graphics.Rect visible=new android.graphics.Rect();
+                if(!queued[0]&&view.isShown()&&view.getGlobalVisibleRect(visible)){queued[0]=true;view.getViewTreeObserver().removeOnPreDrawListener(this);fetch(view,url);}return true;}
+        };
+        view.getViewTreeObserver().addOnPreDrawListener(listener);
+        view.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener(){
+            public void onViewAttachedToWindow(android.view.View v){if(!queued[0]&&v.getViewTreeObserver().isAlive()){v.getViewTreeObserver().removeOnPreDrawListener(listener);v.getViewTreeObserver().addOnPreDrawListener(listener);}}
+            public void onViewDetachedFromWindow(android.view.View v){if(v.getViewTreeObserver().isAlive())v.getViewTreeObserver().removeOnPreDrawListener(listener);}
+        });
+    }
+    private void fetch(ImageView view,String url){
         if(!isPoster(url))return;
         view.setTag(url);
         Bitmap cached=memory.get(url);
         if(cached!=null){view.setImageBitmap(cached);return;}
+        if(pool.isShutdown())return;
         pool.submit(()->{
             HttpURLConnection con=null;Bitmap b=null;
             try {

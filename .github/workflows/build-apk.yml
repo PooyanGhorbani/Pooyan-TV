@@ -1,8 +1,8 @@
-name: Build Pooyan TV v0.5.1 Cinematic Preview
+name: Build Pooyan TV v0.6.0 Premium Preview
 on:
   workflow_dispatch:
   push:
-    branches: [dev/v0.5.1-playback]
+    branches: [dev/v0.6.0-premium]
     paths:
       - 'app/**'
       - 'tests/**'
@@ -42,42 +42,86 @@ jobs:
         run: bash scripts/verify-offline.sh
       - name: Build, unit tests and lint
         run: |
-          gradle --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug || {
+          gradle --no-daemon --stacktrace assembleDebug assembleRelease testDebugUnitTest lintDebug lintRelease || {
             sleep 15
-            gradle --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug
+            gradle --no-daemon --stacktrace assembleDebug assembleRelease testDebugUnitTest lintDebug lintRelease
           }
       - name: Public HTTP integration checks (no device playback)
         run: POOYAN_LIVE_CHECK=1 gradle --no-daemon testDebugUnitTest --rerun-tasks
       - name: Package preview (no automatic TV installation)
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.5.1-cinematic-preview-r3.apk
-          sha256sum Pooyan-TV-v0.5.1-cinematic-preview-r3.apk > SHA256SUMS-v0.5.1-r3.txt
+          cp app/build/outputs/apk/release/app-release.apk Pooyan-TV-v0.6.0-premium-preview.apk
+          sha256sum Pooyan-TV-v0.6.0-premium-preview.apk > SHA256SUMS-v0.6.0.txt
       - name: Upload preview APK and SHA256
         uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-v0.5.1-Cinematic-Preview
+          name: Pooyan-TV-v0.6.0-Premium-Preview
           path: |
-            Pooyan-TV-v0.5.1-cinematic-preview-r3.apk
-            SHA256SUMS-v0.5.1-r3.txt
+            Pooyan-TV-v0.6.0-premium-preview.apk
+            SHA256SUMS-v0.6.0.txt
           if-no-files-found: error
           retention-days: 30
       - name: Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-v0.5.1-Reports
+          name: Pooyan-TV-v0.6.0-Reports
           path: |
-            app/build/reports/lint-results-debug.*
+            app/build/reports/lint-results-*
             app/build/reports/tests/**
             app/build/test-results/**
             app/build/reports/live-*.tsv
           if-no-files-found: ignore
           retention-days: 14
-      - name: Publish isolated preview prerelease
+  emulator:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Enable KVM on CI host
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: gradle --no-daemon connectedDebugAndroidTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Pooyan-TV-v0.6.0-Emulator-Reports
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+          if-no-files-found: ignore
+  publish:
+    needs: [build, emulator]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Pooyan-TV-v0.6.0-Premium-Preview
+          path: release
+      - name: Publish v0.6.0 only after checks
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.5.1 >/dev/null 2>&1 || gh release create v0.5.1 --target "$GITHUB_SHA" --prerelease --title 'Pooyan TV v0.5.1 Preview' --notes 'Remote focus, native public source parsing, seek timeline and per-title Continue Watching. See docs/V051_RESULTS_FA.md for tested results and limitations. No Xiaomi device playback claim.'
-          if ! gh release view v0.5.1 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.5.1-cinematic-preview-r3.apk; then
-            gh release upload v0.5.1 Pooyan-TV-v0.5.1-cinematic-preview-r3.apk SHA256SUMS-v0.5.1-r3.txt
+          cd release
+          sha256sum -c SHA256SUMS-v0.6.0.txt
+          gh release view v0.6.0 >/dev/null 2>&1 || gh release create v0.6.0 --target "$GITHUB_SHA" --prerelease --title 'Pooyan TV v0.6.0 Preview' --notes-file ../docs/V060_RELEASE_FA.md
+          if ! gh release view v0.6.0 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.6.0-premium-preview.apk; then
+            gh release upload v0.6.0 Pooyan-TV-v0.6.0-premium-preview.apk SHA256SUMS-v0.6.0.txt
           fi

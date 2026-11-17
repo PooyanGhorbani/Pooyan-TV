@@ -13,6 +13,7 @@ public class CatalogMergeSmokeTest {
   check(CatalogIdentity.normalized("ميمون، مست").equals("میمون مست"));
   FarsiPlexTitle first=new FarsiPlexTitle("https://farsiplex.com/tvshow/meymoone-mast/","series","میمون مست");
   FarsiPlexTitle second=new FarsiPlexTitle("https://namakadeh.com/serieses/meymoone-mast","series","میمون، مست");
+  first.year="2026";second.year="2026";
   Map<String,List<FarsiPlexTitle>> variants=new HashMap<>();
   List<FarsiPlexTitle> joined=CatalogMerge.join(Arrays.asList(first),Arrays.asList(second),variants);
   check(joined.size()==1);check(joined.get(0).url.equals(first.url));

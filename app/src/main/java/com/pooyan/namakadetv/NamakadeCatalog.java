@@ -108,6 +108,8 @@ public final class NamakadeCatalog {
                 Element art=row==null?a.selectFirst("img"):row.selectFirst("img");
                 if(art!=null&&ImageUrlPolicy.allowedFor(target,art.absUrl("src")))ep.poster=art.absUrl("src");
                 if(ep.poster.isEmpty())ep.poster=item.poster;
+                Element season=doc.selectFirst(".displayseason[style][seasonno]");
+                try{if(season!=null&&number!=null){ep.season=Integer.parseInt(season.attr("seasonno"));ep.episode=Integer.parseInt(number.text().trim());}}catch(NumberFormatException ignored){}
                 item.episodes.add(ep);if(item.episodes.size()>=250)break;
             }
         }

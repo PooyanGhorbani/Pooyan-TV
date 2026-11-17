@@ -54,7 +54,7 @@ public final class NamakadeRepository {
         final int[] done={0};final String[] firstError={null};
         FarsiPlexRepository.Result join=(items,error)->{
             if(error!=null && firstError[0]==null)firstError[0]=error;
-            for(FarsiPlexTitle item:items)if(CatalogIdentity.normalized(item.name).contains(query))found.add(item);
+            for(FarsiPlexTitle item:items)if(SearchPolicy.matches(item,text))found.add(item);
             if(++done[0]==2)callback.receive(found,found.isEmpty()?firstError[0]:null);
         };
         list("movie",1,join);

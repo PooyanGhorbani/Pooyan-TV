@@ -51,6 +51,9 @@ public final class FarsiPlexParser {
         }
         if(title.isEmpty())title=slugLabel(trusted);
         FarsiPlexTitle t=new FarsiPlexTitle(trusted,kind,title);
+        for(Element alias:d.select("meta[property=og:title],meta[name=title],.original-title")){
+            String text=alias.hasAttr("content")?alias.attr("content"):alias.text();if(!text.isEmpty()&&!text.equals(title))t.aliases.add(text);
+        }
         t.publicStream=PublicHtml5Media.find(d,trusted);
         Element ogImg=d.selectFirst("meta[property=og:image]");
         if(ogImg!=null)t.poster=FarsiPlexUrlPolicy.normalize(trusted,ogImg.attr("content"));
@@ -93,7 +96,11 @@ public final class FarsiPlexParser {
                 if(img!=null)ep.poster=imageUrl(trusted,img);
                 if(ep.poster.isEmpty())ep.poster=t.poster;
                 Element number=row==null?null:row.selectFirst(".numerando");
-                if(number!=null&&!number.text().trim().isEmpty())ep.name=number.text().trim()+" · "+label;
+                if(number!=null&&!number.text().trim().isEmpty()){
+                    ep.name=number.text().trim()+" · "+label;
+                    Matcher numberMatch=Pattern.compile("(\\d+)\\s*-\\s*(\\d+)").matcher(number.text());
+                    if(numberMatch.find())try{ep.season=Integer.parseInt(numberMatch.group(1));ep.episode=Integer.parseInt(numberMatch.group(2));}catch(NumberFormatException ignored){}
+                }
                 t.episodes.add(ep);
                 if(t.episodes.size()>=250)break;
             }
