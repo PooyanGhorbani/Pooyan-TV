@@ -128,7 +128,7 @@ public final class PlayerActivity extends Activity {
         if(resumePrompt)resumePlayWhenReady=false;
         initLayout();
         if(currentCandidate==null)exhausted(SourceHealth.Failure.NETWORK);else initPlayer();
-        if(resumePrompt&&currentCandidate!=null)new AlertDialog.Builder(this).setTitle("ادامهٔ تماشا")
+        if(resumePrompt&&currentCandidate!=null)new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("ادامهٔ تماشا")
             .setMessage("ادامه از "+PlaybackResumePolicy.time(pendingPosition)+" یا تماشا از ابتدا؟")
             .setPositiveButton("ادامه",(d,w)->startChoice(false))
             .setNegativeButton("از ابتدا",(d,w)->startChoice(true))
@@ -348,7 +348,7 @@ public final class PlayerActivity extends Activity {
     private void chooseSpeed() {
         final float[] speeds = {0.75f, 1f, 1.25f, 1.5f, 2f};
         String[] labels = {"0.75×", "1× (معمولی)", "1.25×", "1.5×", "2×"};
-        new AlertDialog.Builder(this).setTitle("سرعت پخش")
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("سرعت پخش")
                 .setItems(labels, (d,n) -> {
                     speed = speeds[n]; if (player != null) player.setPlaybackSpeed(speed);
                     toast("سرعت " + labels[n]);
@@ -387,7 +387,7 @@ public final class PlayerActivity extends Activity {
         if (labels.size() == 1 && type != C.TRACK_TYPE_TEXT) {
             toast("این منبع فقط انتخاب خودکار دارد."); return null;
         }
-        return new AlertDialog.Builder(this).setTitle(heading)
+        return new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle(heading)
                 .setItems(labels.toArray(new String[0]), (d,n) -> {
                     DefaultTrackSelector.Parameters.Builder builder = trackSelector.buildUponParameters()
                             .clearOverridesOfType(type);
@@ -413,7 +413,7 @@ public final class PlayerActivity extends Activity {
         url.setSingleLine(true);
         url.setHint("https://example.com/subtitles.vtt");
         url.setPadding(dp(16), dp(16), dp(16), dp(16));
-        new AlertDialog.Builder(this).setTitle("زیرنویس مستقیم HTTPS (SRT / VTT)")
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("زیرنویس مستقیم HTTPS (SRT / VTT)")
                 .setView(url).setNegativeButton("انصراف", null)
                 .setPositiveButton("افزودن", (d,n) -> {
                     String value = url.getText().toString().trim();
@@ -533,8 +533,16 @@ public final class PlayerActivity extends Activity {
         super.onStop();
     }
 
-    private AlertDialog subtitleSize(){return new AlertDialog.Builder(this).setTitle("اندازهٔ زیرنویس این پروفایل").setItems(new String[]{"کوچک","معمولی","بزرگ","خیلی بزرگ"},(d,i)->{float value=new float[]{.8f,1f,1.25f,1.5f}[i];profilePrefs.edit().putFloat("subtitle_size",value).apply();captions.setFractionalTextSize(.0533f*value);}).show();}
-    private AlertDialog subtitleDelay(){return new AlertDialog.Builder(this).setTitle("تأخیر مثبت؛ جلو انداختن پشتیبانی نمی‌شود").setItems(new String[]{"بدون تأخیر","نیم ثانیه","۱ ثانیه","۲ ثانیه","۳ ثانیه","۵ ثانیه"},(d,i)->{profilePrefs.edit().putInt("subtitle_delay",new int[]{0,500,1000,2000,3000,5000}[i]).apply();cueQueue.clear();captions.setCues(java.util.Collections.emptyList());}).show();}
+    private boolean dialogMediaKey(android.content.DialogInterface dialog,int key,KeyEvent event){
+        boolean media=key==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE||key==KeyEvent.KEYCODE_MEDIA_PLAY||key==KeyEvent.KEYCODE_MEDIA_PAUSE||key==KeyEvent.KEYCODE_MEDIA_STOP||key==KeyEvent.KEYCODE_MEDIA_FAST_FORWARD||key==KeyEvent.KEYCODE_MEDIA_REWIND;
+        if(!media)return false;
+        if(event.getAction()!=KeyEvent.ACTION_DOWN)return true;
+        if((resumePrompt||playerErrorShown)&&key!=KeyEvent.KEYCODE_MEDIA_STOP)return true;
+        if(key==KeyEvent.KEYCODE_MEDIA_STOP)dialog.dismiss();
+        return dispatchKeyEvent(event);
+    }
+    private AlertDialog subtitleSize(){return new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("اندازهٔ زیرنویس این پروفایل").setItems(new String[]{"کوچک","معمولی","بزرگ","خیلی بزرگ"},(d,i)->{float value=new float[]{.8f,1f,1.25f,1.5f}[i];profilePrefs.edit().putFloat("subtitle_size",value).apply();captions.setFractionalTextSize(.0533f*value);}).show();}
+    private AlertDialog subtitleDelay(){return new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("تأخیر مثبت؛ جلو انداختن پشتیبانی نمی‌شود").setItems(new String[]{"بدون تأخیر","نیم ثانیه","۱ ثانیه","۲ ثانیه","۳ ثانیه","۵ ثانیه"},(d,i)->{profilePrefs.edit().putInt("subtitle_delay",new int[]{0,500,1000,2000,3000,5000}[i]).apply();cueQueue.clear();captions.setCues(java.util.Collections.emptyList());}).show();}
     private void failover(SourceHealth.Failure reason){
         if(switching||stopping||isFinishing())return;
         cancelNext();if(currentCandidate!=null)SourceHealth.failed(currentCandidate.url,reason,android.os.SystemClock.elapsedRealtime());
@@ -558,7 +566,7 @@ public final class PlayerActivity extends Activity {
     private void exhausted(SourceHealth.Failure failure){
         if(playerErrorShown||isFinishing())return;playerErrorShown=true;
         if(player!=null)player.pause();
-        new AlertDialog.Builder(this).setTitle("منبع قابل‌پخش باقی نمانده است")
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("منبع قابل‌پخش باقی نمانده است")
             .setMessage(SourceHealth.message(failure)+" همهٔ گزینه‌های مجاز این نوبت بررسی شدند (حداکثر ۳ تلاش). بعداً عنوان را دوباره باز کنید؛ ممکن است منبع نیازمند دسترسی رسمی باشد.")
             .setPositiveButton("بازگشت",(d,w)->finish()).setOnCancelListener(d->finish()).show();
     }
@@ -573,7 +581,7 @@ public final class PlayerActivity extends Activity {
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(20),dp(10),dp(20),dp(10));
         android.widget.ImageView poster=new android.widget.ImageView(this);poster.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);content.addView(poster,new LinearLayout.LayoutParams(dp(210),dp(118)));if(ImageUrlPolicy.allowed(nextEpisode.poster))nextImages.load(poster,nextEpisode.poster);
         content.addView(TvUi.text(this,nextEpisode.name,20,Color.WHITE,true));
-        nextDialog=new AlertDialog.Builder(this).setTitle("قسمت بعد").setView(content).setPositiveButton("پخش بعدی",(d,w)->playNextEpisode()).setNegativeButton("لغو",(d,w)->cancelNext()).setOnCancelListener(d->cancelNext()).create();nextDialog.show();
+        nextDialog=new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("قسمت بعد").setView(content).setPositiveButton("پخش بعدی",(d,w)->playNextEpisode()).setNegativeButton("لغو",(d,w)->cancelNext()).setOnCancelListener(d->cancelNext()).create();nextDialog.show();
         if(profilePrefs.getBoolean("autoplay",true)){nextCountdown=new EpisodeOrder.Countdown(profilePrefs.getInt("countdown",10));handler.postDelayed(nextTicker,1000);}
     }
     private void cancelNext(){if(nextCountdown!=null)nextCountdown.cancel();handler.removeCallbacks(nextTicker);if(nextDialog!=null){nextDialog.dismiss();nextDialog=null;}nextCountdown=null;}
