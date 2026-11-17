@@ -60,3 +60,16 @@ test('unverified remote video is not called playable',async()=>{
  const data=await (await handle(request(),env,mock)).json();
  assert.equal(data.status,'unavailable');
 });
+
+test('public watch form follows only same-site player to exact verified CDN',async()=>{
+ const mock=async(url,opt)=>{
+  if(url===page)return resp(200,'text/html',`<form id='watch-123' action='https://farsiplex.com/play/' method='post'><input name='id' value='123'/></form>`);
+  if(url==='https://farsiplex.com/play/'){assert.equal(opt.method,'POST');assert.equal(opt.body,'id=123');return new Response(null,{status:302,headers:{location:'/play-online-video/'}});}
+  if(url==='https://farsiplex.com/play-online-video/')return resp(200,'text/html',`<iframe src='https://farsiplex.com/jwplayer/?id=123'></iframe>`);
+  if(url==='https://farsiplex.com/jwplayer/?id=123')return resp(200,'text/html','var jw = {"file":"https://pl.farsiplex.buzz/test.mp4?md5=fixture"};');
+  if(url==='https://pl.farsiplex.buzz/test.mp4?md5=fixture')return resp(206,'video/mp4','x');
+  throw Error('unexpected route');
+ };
+ const data=await (await handle(request(),{TV_ACCESS_TOKEN:env.TV_ACCESS_TOKEN},mock)).json();
+ assert.equal(data.status,'playable');assert.equal(data.searchUsed,false);
+});

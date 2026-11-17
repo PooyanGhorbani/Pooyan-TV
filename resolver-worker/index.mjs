@@ -30,7 +30,7 @@ function mediaHostAllowed(url,env) {
   let u;
   try {u=new URL(url);} catch {return false;}
   if(u.protocol!=='https:'||u.username||u.password||u.port)return false;
-  const hosts=String(env.MEDIA_ALLOWED_HOSTS||'farsiplex.com,www.farsiplex.com')
+  const hosts=String(env.MEDIA_ALLOWED_HOSTS||'farsiplex.com,www.farsiplex.com,pl.farsiplex.buzz')
     .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
   return hosts.includes(u.hostname.toLowerCase());
 }
@@ -109,6 +109,35 @@ async function searchOfficialPages(page,title,env,fetcher){
   }
   return {pages:pages.slice(0,2),attempted:true,warning:''};
 }
+export function jwCandidates(html,env){
+ const match=html.match(/var\s+jw\s*=\s*(\{[^;]*\})\s*;/s);
+ if(!match)return [];
+ try{const c=JSON.parse(match[1]);return [c.file].filter(u=>typeof u==='string'&&directMedia(u)&&mediaHostAllowed(u,env));}catch{return [];}
+}
+async function publicWatch(html,env,fetcher){
+ const form=(html.match(/<form\b[^>]*id=['"]watch-\d+['"][^>]*>[\s\S]*?<\/form>/i)||[])[0];
+ if(!form||!form.includes("https://farsiplex.com/play/"))return [];
+ const id=(form.match(/name=['"]id['"]\s+value=['"](\d{1,9})['"]/i)||[])[1];
+ if(!id)return [];
+ let cookies='';
+ const takeCookies=r=>{const values=r.headers.getSetCookie?.()||[r.headers.get('set-cookie')||''];const pairs=values.map(v=>v.split(';')[0]).filter(Boolean);if(pairs.length)cookies=pairs.join('; ');};
+ let response=await fetcher('https://farsiplex.com/play/',{method:'POST',redirect:'manual',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'id='+id});takeCookies(response);
+ for(let i=0;i<3&&response.status>=300&&response.status<400;i++){
+  const next=new URL(response.headers.get('location')||'', 'https://farsiplex.com');
+  if(next.protocol!=='https:'||next.hostname!=='farsiplex.com'||next.port||next.username||!/^\/(play|player|play-[a-z-]+)\/$/.test(next.pathname))return [];
+  if(response.body)await response.body.cancel();
+  response=await fetcher(next.href,{redirect:'manual',headers:cookies?{'Cookie':cookies}:{}});takeCookies(response);
+ }
+ if(response.status!==200)return [];
+ const page=await response.text();if(page.length>1000000)return [];
+ for(const frame of page.matchAll(/<iframe\b[^>]*src=['"]([^'"]+)['"]/gi)){
+  let url;try{url=new URL(decodeEntities(frame[1]),'https://farsiplex.com');}catch{continue;}
+  if(url.protocol!=='https:'||url.hostname!=='farsiplex.com'||url.port||url.username||url.pathname!=='/jwplayer/')continue;
+  const doc=await fetchPublicHtml(url.href,(u,o)=>fetcher(u,{...o,headers:{...o.headers,...(cookies?{'Cookie':cookies}:{})}}));
+  if(doc){const candidates=jwCandidates(doc,env);if(candidates.length)return candidates;}
+ }
+ return [];
+}
 export async function handle(request,env,fetcher=fetch){
   const requestUrl=new URL(request.url);
   if(request.method==='GET'&&requestUrl.pathname==='/health')return json({service:'Pooyan TV Resolver',ready:!!(env.TV_ACCESS_TOKEN&&env.DEEPSEEK_API_KEY)});
@@ -128,6 +157,9 @@ export async function handle(request,env,fetcher=fetch){
     for(const candidate of videoCandidates(initialHtml,page,env)){
       if(await checkMedia(candidate,env,fetcher))return json({status:'playable',mediaUrl:candidate,verified:true,searchUsed:false});
     }
+    for(const candidate of await publicWatch(initialHtml,env,fetcher)){
+      if(await checkMedia(candidate,env,fetcher))return json({status:"playable",mediaUrl:candidate,verified:true,searchUsed:false});
+    }
     const search=await searchOfficialPages(page,input.title,env,fetcher);
     for(const alternate of search.pages){
       const html=await fetchPublicHtml(alternate,fetcher);
@@ -141,4 +173,5 @@ export async function handle(request,env,fetcher=fetch){
   }catch(e){return json({status:'error',reason:String(e?.message||e).slice(0,180)},502);}finally{clearTimeout(deadline);}
 }
 export default {async fetch(request,env){return handle(request,env);}};
+
 

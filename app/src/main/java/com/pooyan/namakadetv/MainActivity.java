@@ -456,18 +456,19 @@ public final class MainActivity extends Activity {
     private void search(String query){
         searchTerm=query==null?"":query.trim();if(searchTerm.isEmpty())return;
         if(searchTerm.length()>100)searchTerm=searchTerm.substring(0,100);
-        begin("search");title("جست‌وجو: "+searchTerm,"جست‌وجو در فهرست‌های عمومی؛ حداکثر ۳ صفحه برای هر نوع");
+        begin("search");title("جست‌وجو: "+searchTerm,"جست‌وجوی عمومی خود FarsiPlex");
         LinearLayout results=vertical();content.addView(results,lp(-1,-2));
         TextView wait=text("در حال جست‌وجوی فیلم و سریال…",15,MUTED,false);results.addView(wait,lp(-1,70));
         String q=normalizeSearch(searchTerm);int token=generation;
         List<FarsiPlexTitle> found=new ArrayList<>();Set<String> urls=new HashSet<>();
-        scanSearch("movie",1,token,q,found,urls,results,()->scanSearch("series",1,token,q,found,urls,results,()->{
-            if(generation!=token)return;
+        source.search(searchTerm,(items,error)->{
+            if(destroyed||generation!=token)return;
             results.removeAllViews();
-            if(found.isEmpty())results.addView(text("عنوانی پیدا نشد. جست‌وجو فقط در صفحات عمومی موجود انجام شده است.",15,MUTED,false),lp(-1,76));
-            else showGrid(results,found);
-            info("نتایج جست‌وجوی محلی در فهرست FarsiPlex: "+found.size());
-        }));
+            if(error!=null){results.addView(text(error,15,MUTED,false),lp(-1,76));info(error);return;}
+            if(items.isEmpty())results.addView(text("عنوانی در جست‌وجوی سایت پیدا نشد.",15,MUTED,false),lp(-1,76));
+            else showGrid(results,items);
+            info("نتایج جست‌وجوی FarsiPlex: "+items.size());
+        });;
     }
     private void scanSearch(String kind,int p,int token,String q,List<FarsiPlexTitle> found,Set<String> urls,LinearLayout result,Runnable finished){
         if(destroyed||token!=generation)return;
@@ -531,5 +532,6 @@ public final class MainActivity extends Activity {
         destroyed=true;generation++;source.close();images.close();aiResolver.close();super.onDestroy();
     }
 }
+
 
 

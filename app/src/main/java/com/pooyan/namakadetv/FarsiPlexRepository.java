@@ -55,7 +55,9 @@ public final class FarsiPlexRepository {
         executor.execute(()->{
             FarsiPlexTitle res=item;String error=null;
             try{
-                res=FarsiPlexParser.details(fetch(item.url).outerHtml(),item.url,item.kind);
+                Document document=fetch(item.url);
+                res=FarsiPlexParser.details(document.outerHtml(),item.url,item.kind);
+                if(res.publicStream.isEmpty())res.publicStream=FarsiPlexPlayback.resolve(document);
                 if(!res.publicStream.isEmpty()&&!MediaProbe.valid(res.publicStream))res.publicStream="";
                 if(res.poster.isEmpty())res.poster=item.poster;
                 if(res.year.isEmpty())res.year=item.year;
@@ -64,6 +66,21 @@ public final class FarsiPlexRepository {
             activity.runOnUiThread(()->callback.receive(result,msg));
         });
     }
+    public void search(String query,Result callback){
+        executor.execute(()->{
+            List<FarsiPlexTitle> items=new ArrayList<>();String error=null;
+            try{
+                String url="https://farsiplex.com/?s="+java.net.URLEncoder.encode(query,"UTF-8");
+                Connection.Response response=Jsoup.connect(url).followRedirects(false).timeout(11000).maxBodySize(1800000).ignoreHttpErrors(true).execute();
+                if(response.statusCode()!=200)throw new IOException("HTTP "+response.statusCode());
+                String html=response.body();items.addAll(FarsiPlexParser.listing(html,url,"movie"));items.addAll(FarsiPlexParser.listing(html,url,"series"));
+            }catch(Exception e){error="جست‌وجوی سایت انجام نشد؛ دوباره تلاش کنید.";}
+            List<FarsiPlexTitle> result=items;String message=error;
+            activity.runOnUiThread(()->callback.receive(result,message));
+        });
+    }
     public void close(){executor.shutdownNow();}
 }
+
+
 
