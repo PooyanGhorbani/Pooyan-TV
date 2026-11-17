@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 /** Coordinates vetted source adapters while the UI remains provider-neutral. */
 public final class UnifiedRepository {
+    private boolean closed;
     private final FarsiPlexRepository main;
     private final NamakadeRepository alternate;
     private final Map<String,List<FarsiPlexTitle>> variants=new HashMap<>();
@@ -21,7 +22,7 @@ public final class UnifiedRepository {
         boolean oneDone,twoDone,delivered;
     }
     private void finished(Pending p,FarsiPlexRepository.Result callback){
-        if(!p.oneDone||!p.twoDone||p.delivered)return;
+        if(closed||!p.oneDone||!p.twoDone||p.delivered)return;
         p.delivered=true;
         Map<String,List<FarsiPlexTitle>> found=new HashMap<>();
         List<FarsiPlexTitle> result=CatalogMerge.join(p.first,p.second,found);
@@ -49,6 +50,7 @@ public final class UnifiedRepository {
     }
     public void detail(FarsiPlexTitle item,FarsiPlexRepository.DetailResult callback){
         FarsiPlexRepository.DetailResult original=(resolved,error)->{
+            if(closed)return;
             if(resolved!=null&&!"series".equals(resolved.kind)&&resolved.publicStream.isEmpty()){
                 List<FarsiPlexTitle> options=variants.get(item.url);
                 if(options!=null&&!options.isEmpty()){
@@ -64,6 +66,7 @@ public final class UnifiedRepository {
         if(pos>=Math.min(options.size(),2)){result.receive(primary,primaryError);return;}
         FarsiPlexTitle candidate=options.get(pos);
         FarsiPlexRepository.DetailResult cb=(found,error)->{
+            if(closed)return;
             if(found!=null&&!found.publicStream.isEmpty()){
                 primary.publicStream=found.publicStream;
                 primary.playbackError="";
@@ -72,5 +75,5 @@ public final class UnifiedRepository {
         };
         if(isSecondary(candidate))alternate.detail(candidate,cb);else main.detail(candidate,cb);
     }
-    public void close(){main.close();alternate.close();}
+    public void close(){closed=true;main.close();alternate.close();}
 }

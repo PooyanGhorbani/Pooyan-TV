@@ -26,6 +26,6 @@ public final class PlaybackResumePolicy {
  }
  public static String time(long ms){
   if(ms<0)return "--:--";long sec=ms/1000;
-  return sec>=3600?String.format(Locale.US,"%d:%02d:%02d",sec/3600,(sec/60)%60,sec%60):String.format(Locale.US,"%02d:%02d",sec/60,sec%60);
+  return sec>=3600?String.format(Locale.US,"%02d:%02d:%02d",sec/3600,(sec/60)%60,sec%60):String.format(Locale.US,"%02d:%02d",sec/60,sec%60);
  }
 }

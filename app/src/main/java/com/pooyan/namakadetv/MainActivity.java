@@ -327,7 +327,7 @@ public final class MainActivity extends Activity {
     }
     private void posterRows(View view,List<LinearLayout> rows){
         if("poster-row".equals(view.getTag())&&view instanceof LinearLayout){
-            if(((LinearLayout)view).getChildCount()>0)rows.add((LinearLayout)view);return;
+            if(((LinearLayout)view).getChildCount()>0&&((LinearLayout)view).getChildAt(0).isFocusable())rows.add((LinearLayout)view);return;
         }
         if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)posterRows(group.getChildAt(i),rows);}
     }
@@ -467,7 +467,7 @@ public final class MainActivity extends Activity {
         if(returnView!=null){
             generation++;root.removeAllViews();root.addView(returnView);
             screen=returnScreen;content=returnContent;navigationBar=returnNavigation;status=returnStatus;
-            if("home".equals(screen))addContinueWatching();
+            if("home".equals(screen)){addContinueWatching();if(!loadedMovies.isEmpty())updateFeatured(loadedMovies.get(0));}
             View target=returnFocus;returnView=null;
             if(target!=null){
                 View restored=target.getTag()==null?target:root.findViewWithTag(target.getTag());

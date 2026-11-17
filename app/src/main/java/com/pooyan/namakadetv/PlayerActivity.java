@@ -98,7 +98,7 @@ public final class PlayerActivity extends Activity {
         library = new LibraryStore(this);
         pendingPosition = state==null?library.getResumePosition(streamUrl,pageUrl):state.getLong("position",0);
         if(state!=null)resumePlayWhenReady=state.getBoolean("playing",true);
-        resumePrompt=state==null&&pendingPosition>0;
+        resumePrompt=state==null?pendingPosition>0:state.getBoolean("prompt",false);
         if(resumePrompt)resumePlayWhenReady=false;
         initLayout();
         initPlayer();
@@ -489,6 +489,7 @@ public final class PlayerActivity extends Activity {
         super.onSaveInstanceState(state);
         state.putLong("position",player==null?Math.max(0,pendingPosition):player.getCurrentPosition());
         state.putBoolean("playing",player==null?resumePlayWhenReady:player.getPlayWhenReady());
+        state.putBoolean("prompt",resumePrompt);
     }
     @Override protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);

@@ -25,7 +25,7 @@ public final class NamakadeCatalog {
             if(!path.equals("/movies")&&!path.equals("/serial")&&!path.startsWith("/movies/")
                     &&!path.startsWith("/iran-1-movies/")&&!path.startsWith("/serieses/")
                     &&!path.startsWith("/series/"))return "";
-            return new URI("https",null,host.toLowerCase(java.util.Locale.ROOT),-1,path,u.getQuery(),null).toString();
+            return "https://"+host.toLowerCase(java.util.Locale.ROOT)+u.getRawPath()+(u.getRawQuery()==null?"":"?"+u.getRawQuery());
         }catch(Exception ex){return "";}
     }
     public static String start(String kind){return BASE+("series".equals(kind)?"/serial":"/movies");}

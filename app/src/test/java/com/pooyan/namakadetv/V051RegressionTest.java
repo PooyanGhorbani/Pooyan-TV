@@ -16,6 +16,10 @@ public class V051RegressionTest {
   assertEquals("Example",t.name);assertTrue(t.poster.endsWith("p.jpg"));assertTrue(t.publicStream.endsWith("?published=fixture"));
   assertEquals("",NamakadeCatalog.publishedMedia(Jsoup.parse("<iframe src='https://media.negahestan.com/v.mp4'></iframe>"),t.url));
  }
+ @Test public void publishedPageQueryIsPreservedExactly(){
+  String page="https://namakadeh.com/series/show/episodes/one?token=a%2Bb%2Fc%3D";
+  assertEquals(page,NamakadeCatalog.safeUrl(page));
+ }
  @Test public void noUntrustedMediaHostOrAuthenticationPaths(){
   assertEquals("",NamakadeCatalog.safeUrl("https://namakadeh.com/auth/login"));
   assertEquals("",NamakadeCatalog.safeUrl("https://namakadeh.com.evil.test/movies/a"));
