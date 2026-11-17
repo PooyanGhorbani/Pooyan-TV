@@ -372,13 +372,13 @@ public final class MainActivity extends Activity {
         EditText endpoint=new EditText(this);endpoint.setSingleLine(true);
         endpoint.setTextColor(WHITE);endpoint.setHintTextColor(MUTED);
         endpoint.setHint("https://your-worker.workers.dev");
-        endpoint.setText(preferences.getString("ai_worker_origin",""));
+        endpoint.setText(preferences.getString("ai_worker_origin","https://pooyan-tv-resolver.pooyan-ghorbani-real.workers.dev"));
         fields.addView(endpoint,lp(-1,58));
         EditText code=new EditText(this);code.setSingleLine(true);
         code.setTextColor(WHITE);code.setHintTextColor(MUTED);
         code.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         code.setHint("کد اتصال Worker (حداقل ۱۲ کاراکتر)");
-        code.setText(preferences.getString("ai_access_code",""));
+        code.setText(new ResolverSecretStore(preferences).get());
         fields.addView(code,lp(-1,58));
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("اتصال موتور DeepSeek")
           .setMessage("برای حفظ امنیت، فقط URL سرویس Cloudflare Worker و کد دسترسی اختصاصی خودت را وارد کن.")
@@ -389,7 +389,8 @@ public final class MainActivity extends Activity {
             if(origin.isEmpty()||token.length()<12){
                 Toast.makeText(this,"URL HTTPS معتبر و کد حداقل ۱۲ کاراکتری لازم است",Toast.LENGTH_LONG).show();return;
             }
-            preferences.edit().putString("ai_worker_origin",origin).putString("ai_access_code",token).apply();
+            if(!new ResolverSecretStore(preferences).save(token)){Toast.makeText(this,"ذخیرهٔ امن توکن انجام نشد",Toast.LENGTH_LONG).show();return;}
+            preferences.edit().putString("ai_worker_origin",origin).apply();
             dialog.dismiss();
             if(afterSave!=null)afterSave.run();
             else Toast.makeText(this,"اتصال ذخیره شد؛ برای آزمون، یک فیلم را انتخاب کن.",Toast.LENGTH_LONG).show();
@@ -397,8 +398,8 @@ public final class MainActivity extends Activity {
         dialog.show();
     }
     private void resolveWithAI(FarsiPlexTitle item){
-        String worker=preferences.getString("ai_worker_origin","");
-        String code=preferences.getString("ai_access_code","");
+        String worker=preferences.getString("ai_worker_origin","https://pooyan-tv-resolver.pooyan-ghorbani-real.workers.dev");
+        String code=new ResolverSecretStore(preferences).get();
         if(AiResolverUrlPolicy.normalize(worker).isEmpty()||code.length()<12){
             configureAI(()->resolveWithAI(item));return;
         }
@@ -530,4 +531,5 @@ public final class MainActivity extends Activity {
         destroyed=true;generation++;source.close();images.close();aiResolver.close();super.onDestroy();
     }
 }
+
 
