@@ -56,6 +56,7 @@ public final class FarsiPlexRepository {
             FarsiPlexTitle res=item;String error=null;
             try{
                 res=FarsiPlexParser.details(fetch(item.url).outerHtml(),item.url,item.kind);
+                if(!res.publicStream.isEmpty()&&!MediaProbe.valid(res.publicStream))res.publicStream="";
                 if(res.poster.isEmpty())res.poster=item.poster;
                 if(res.year.isEmpty())res.year=item.year;
             }catch(Exception e){error="دریافت جزئیات ممکن نشد: "+e.getMessage();}
@@ -65,3 +66,4 @@ public final class FarsiPlexRepository {
     }
     public void close(){executor.shutdownNow();}
 }
+

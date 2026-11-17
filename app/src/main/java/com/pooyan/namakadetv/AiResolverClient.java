@@ -51,7 +51,7 @@ public final class AiResolverClient {
                 JSONObject result=new JSONObject(response);
                 if("playable".equals(result.optString("status"))&&result.optBoolean("verified")){
                     String candidate=result.optString("mediaUrl");
-                    if(StreamDetector.isDirectMedia(candidate))found=candidate;
+                    if(StreamDetector.isDirectMedia(candidate)&&MediaProbe.valid(candidate))found=candidate;
                 }
                 String reason=result.optString("reason","");
                 if(reason.length()>160)reason=reason.substring(0,160);
@@ -67,3 +67,4 @@ public final class AiResolverClient {
     }
     public void close(){executor.shutdownNow();}
 }
+
