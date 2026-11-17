@@ -468,7 +468,7 @@ public final class MainActivity extends Activity {
             if(items.isEmpty())results.addView(text("عنوانی در جست‌وجوی سایت پیدا نشد.",15,MUTED,false),lp(-1,76));
             else showGrid(results,items);
             info("نتایج جست‌وجوی FarsiPlex: "+items.size());
-        });;
+        });
     }
     private void scanSearch(String kind,int p,int token,String q,List<FarsiPlexTitle> found,Set<String> urls,LinearLayout result,Runnable finished){
         if(destroyed||token!=generation)return;
@@ -532,6 +532,7 @@ public final class MainActivity extends Activity {
         destroyed=true;generation++;source.close();images.close();aiResolver.close();super.onDestroy();
     }
 }
+
 
 
 

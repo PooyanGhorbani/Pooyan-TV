@@ -73,3 +73,13 @@ test('public watch form follows only same-site player to exact verified CDN',asy
  const data=await (await handle(request(),{TV_ACCESS_TOKEN:env.TV_ACCESS_TOKEN},mock)).json();
  assert.equal(data.status,'playable');assert.equal(data.searchUsed,false);
 });
+
+test('public watch does not follow an external redirect or escalate inaccessible pages',async()=>{
+ const mock=async(url)=>{
+  if(url===page)return resp(200,'text/html',`<form id='watch-123' action='https://farsiplex.com/play/' method='post'><input name='id' value='123'/></form>`);
+  if(url==='https://farsiplex.com/play/')return new Response(null,{status:302,headers:{location:'https://evil.example/player/'}});
+  throw Error('must not follow unexpected host');
+ };
+ const data=await (await handle(request(),{TV_ACCESS_TOKEN:env.TV_ACCESS_TOKEN},mock)).json();
+ assert.equal(data.status,'unavailable');
+});
