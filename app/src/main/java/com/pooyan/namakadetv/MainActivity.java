@@ -31,13 +31,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Pooyan TV FarsiPlex Edition: a true, remote-driven Android TV UI (not a WebView). */
+/** Pooyan TV: provider-neutral cinematic Android TV interface, remote-first. */
 public final class MainActivity extends Activity {
-    private static final int BG=0xFF080C15, PANEL=0xFF152133, TEAL=0xFF26D0C0, WHITE=0xFFFAFAFC, MUTED=0xFFA6B8CC;
+    private static final int BG=0xFF08080B, PANEL=0xFF1B1B20, TEAL=0xFFE50914, WHITE=0xFFF6F6F6, MUTED=0xFFB3B3BB;
     private FrameLayout root;
     private LinearLayout content;
     private TextView status;
-    private FarsiPlexRepository source;
+    private UnifiedRepository source;
+    private FarsiPlexTitle featured;
+    private TextView featuredTitle,featuredDescription;
+    private ImageView featuredBackdrop;
     private CatalogImages images;
     private LocalStreams streams;
     private AiResolverClient aiResolver;
@@ -58,7 +61,7 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
-        source=new FarsiPlexRepository(this);images=new CatalogImages(this);
+        source=new UnifiedRepository(this);images=new CatalogImages(this);
         streams=new LocalStreams(this);aiResolver=new AiResolverClient(this);
         preferences=getSharedPreferences("pooyan_farsiplex_v04",MODE_PRIVATE);
         home();
@@ -68,7 +71,8 @@ public final class MainActivity extends Activity {
     private LinearLayout horizontal(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
     private LinearLayout.LayoutParams lp(int w,int h){return new LinearLayout.LayoutParams(w<0?w:dp(w),h<0?h:dp(h));}
     private GradientDrawable shape(int color,int radius,boolean focus){
-        GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));d.setStroke(dp(focus?3:1),focus?TEAL:0xFF2A4054);return d;
+        GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));
+        d.setStroke(dp(focus?2:0),focus?WHITE:color);return d;
     }
     private TextView text(String s,int size,int color,boolean bold){
         TextView v=TvUi.text(this,s,size,color,bold);v.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG);
@@ -76,12 +80,14 @@ public final class MainActivity extends Activity {
     }
     private TextView button(String title,boolean selected,Runnable onClick){
         TextView v=text(title,15,WHITE,true);
-        v.setGravity(Gravity.CENTER);v.setPadding(dp(11),dp(8),dp(11),dp(8));
-        v.setFocusable(true);v.setClickable(true);v.setBackground(shape(selected?0xFF117D79:PANEL,12,false));
+        v.setGravity(Gravity.CENTER);v.setPadding(dp(14),dp(8),dp(14),dp(8));
+        int normal=selected?TEAL:PANEL;
+        v.setFocusable(true);v.setClickable(true);v.setBackground(shape(normal,7,false));
         v.setOnFocusChangeListener((view,focused)->{
-            v.setBackground(shape(focused?TEAL:(selected?0xFF117D79:PANEL),12,focused));
+            v.setBackground(shape(focused?WHITE:normal,7,focused));
             v.setTextColor(focused?BG:WHITE);
-            v.setScaleX(focused?1.04f:1);v.setScaleY(focused?1.04f:1);
+            v.setScaleX(focused?1.035f:1);v.setScaleY(focused?1.035f:1);
+            v.setElevation(focused?dp(10):0);
         });
         v.setOnClickListener(view->onClick.run());return v;
     }
@@ -89,59 +95,113 @@ public final class MainActivity extends Activity {
     private void begin(String destination){
         screen=destination;generation++;root.removeAllViews();
         LinearLayout outer=vertical();root.addView(outer,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout navigation=horizontal();navigation.setPadding(dp(32),dp(12),dp(32),dp(10));
-        TextView brand=text("◈  POOYAN TV",23,WHITE,true);brand.setLetterSpacing(.055f);
-        navigation.addView(brand,lp(251,47));
-        navigation.addView(button("خانه",destination.equals("home"),this::home),lp(95,45));gap(navigation,9);
-        navigation.addView(button("فیلم‌ها",destination.equals("movies"),()->browse("movie")),lp(107,45));gap(navigation,9);
-        navigation.addView(button("سریال‌ها",destination.equals("series"),()->browse("series")),lp(111,45));gap(navigation,9);
-        navigation.addView(button("علاقه‌مندی",destination.equals("favorites"),this::favorites),lp(142,45));
+        LinearLayout navigation=horizontal();navigation.setPadding(dp(41),dp(13),dp(32),dp(8));
+        navigation.setBackgroundColor(0xFF0B0B0F);
+        TextView brand=text("POOYAN",24,TEAL,true);brand.setLetterSpacing(.07f);
+        navigation.addView(brand,lp(179,47));
+        navigation.addView(button("خانه",destination.equals("home"),this::home),lp(90,41));gap(navigation,7);
+        navigation.addView(button("فیلم‌ها",destination.equals("movies"),()->browse("movie")),lp(104,41));gap(navigation,7);
+        navigation.addView(button("سریال‌ها",destination.equals("series"),()->browse("series")),lp(113,41));gap(navigation,7);
+        navigation.addView(button("لیست من",destination.equals("favorites"),this::favorites),lp(125,41));
         navigation.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
-        navigation.addView(button("⚙  AI",false,()->configureAI(null)),lp(95,45));gap(navigation,9);
-        navigation.addView(button("⌕  جست‌وجو",destination.equals("search"),this::askSearch),lp(146,45));
-        outer.addView(navigation,lp(-1,73));
-        View divider=new View(this);divider.setBackgroundColor(0xFF243246);outer.addView(divider,lp(-1,1));
+        navigation.addView(button("⌕  جست‌وجو",destination.equals("search"),this::askSearch),lp(137,41));gap(navigation,9);
+        navigation.addView(button("⚙",false,()->configureAI(null)),lp(53,41));
+        outer.addView(navigation,lp(-1,65));
         ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);
-        content=vertical();content.setPadding(dp(40),dp(14),dp(36),dp(40));
+        content=vertical();content.setPadding(dp(40),dp(6),dp(36),dp(35));
         scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
         outer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        status=text("Pooyan TV · FarsiPlex Edition · آرشیو عمومی؛ پخش نیازمند منبع مجاز است",12,MUTED,false);
-        status.setPadding(dp(42),dp(10),0,dp(7));outer.addView(status,lp(-1,39));
+        status=text("",12,MUTED,false);status.setPadding(dp(42),0,0,dp(4));
+        status.setVisibility(View.GONE);outer.addView(status,lp(-1,24));
     }
-    private void info(String value){if(status!=null)status.setText(value);}
+    private void info(String value){
+        if(status==null)return;
+        String safe=value==null?"":value.replaceAll("(?i)FarsiPlex|Namakade|F2Media", "منبع")
+           .replaceAll("https?://[^\\s]+", "");
+        status.setText(safe);
+        status.setVisibility(safe.trim().isEmpty()?View.GONE:View.VISIBLE);
+    }
     private void title(String heading,String sub){
         LinearLayout section=vertical();
-        section.addView(text(heading,23,WHITE,true),lp(-1,38));
-        if(sub!=null&&!sub.isEmpty())section.addView(text(sub,13,MUTED,false),lp(-1,28));
-        LinearLayout.LayoutParams p=lp(-1,-2);p.topMargin=dp(23);p.bottomMargin=dp(8);
+        TextView h=text(heading,23,WHITE,true);h.setLetterSpacing(.008f);
+        section.addView(h,lp(-1,37));
+        if(sub!=null&&!sub.isEmpty())section.addView(text(sub,13,MUTED,false),lp(-1,25));
+        LinearLayout.LayoutParams p=lp(-1,-2);p.topMargin=dp(21);p.bottomMargin=dp(7);
         content.addView(section,p);
     }
     private void home(){
         parentSeries=null;begin("home");
-        LinearLayout hero=vertical();hero.setPadding(dp(30),dp(24),dp(30),dp(23));
-        GradientDrawable background=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xFF123F44,0xFF16233B,0xFF101620});
-        background.setCornerRadius(dp(23));hero.setBackground(background);
-        hero.addView(text("POOYAN TV  ·  FARSIPLEX EDITION  ·  0.4.2",13,0xFF7FEEE1,true),lp(-1,27));
-        hero.addView(text("سینمای ایران، روی تلویزیون تو",32,WHITE,true),lp(-1,60));
-        hero.addView(text("فیلم‌ها و سریال‌های FarsiPlex در رابط بومی تلویزیون؛ بدون WebView و بدون تبلیغات داخل برنامه.",16,0xFFCCDFE6,false),lp(-1,57));
-        LinearLayout actions=horizontal();actions.addView(button("◈  تماشای فیلم‌ها",true,()->browse("movie")),lp(201,52));gap(actions,12);
-        actions.addView(button("▣  سریال‌ها و قسمت‌ها",false,()->browse("series")),lp(235,52));
-        hero.addView(actions,lp(-1,57));
-        content.addView(hero,lp(-1,248));
-        title("تازه‌ترین فیلم‌ها","کاتالوگ زندهٔ FarsiPlex · بدون تضمین لینک پخش");
-        rail("movie");
-        title("تازه‌ترین سریال‌ها","فصل‌ها و قسمت‌ها پس از انتخاب عنوان دریافت می‌شوند");
-        rail("series");
-        title("شفافیت پخش","لینک مستقیم شخصی یا لینک عمومی بررسی‌شده با موتور اختیاری DeepSeek.");
-        TextView note=text("وب‌سایت FarsiPlex فعلاً API رسمی پخش قابل تأیید برای Pooyan TV ارائه نکرده است. موتور DeepSeek اختیاری است و فقط منابع عمومی را جست‌وجو می‌کند؛ لینک‌هایی که پیدا نشوند همچنان قابل پخش نخواهند بود.",15,MUTED,false);
-        content.addView(note,lp(-1,-2));
+        FrameLayout hero=new FrameLayout(this);
+        hero.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFF15151B,0xFF242027,0xFF08080B}));
+        featuredBackdrop=new ImageView(this);
+        featuredBackdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);featuredBackdrop.setAlpha(.47f);
+        hero.addView(featuredBackdrop,new FrameLayout.LayoutParams(-1,-1));
+        View shade=new View(this);
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFF08080B,0xEC08080B,0xA008080B,0x1808080B}));
+        hero.addView(shade,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout story=vertical();story.setGravity(Gravity.CENTER_VERTICAL);
+        story.setPadding(dp(35),dp(15),dp(22),dp(20));
+        FrameLayout.LayoutParams storyParams=new FrameLayout.LayoutParams(dp(680),-1,Gravity.START);
+        hero.addView(story,storyParams);
+        TextView eyebrow=text("POOYAN TV  •  ORIGINAL CINEMA EXPERIENCE",12,0xFFFF8087,true);
+        eyebrow.setLetterSpacing(.06f);story.addView(eyebrow,lp(-1,32));
+        featuredTitle=text("یک شب سینمایی، فقط برای تو",37,WHITE,true);
+        featuredTitle.setMaxLines(2);story.addView(featuredTitle,lp(-1,100));
+        featuredDescription=text("تازه‌ترین فیلم‌ها و سریال‌های ایرانی را کشف کن.",16,0xFFD7D7DD,false);
+        featuredDescription.setMaxLines(3);story.addView(featuredDescription,lp(-1,77));
+        LinearLayout actions=horizontal();
+        actions.addView(button("▶  تماشا",true,()->{
+            if(featured!=null)detail(featured);else browse("movie");
+        }),lp(161,50));gap(actions,11);
+        actions.addView(button("اطلاعات بیشتر",false,()->{
+            if(featured!=null)detail(featured);else browse("series");
+        }),lp(177,50));
+        story.addView(actions,lp(-1,53));
+        content.addView(hero,lp(-1,340));
+        if(!loadedMovies.isEmpty())updateFeatured(loadedMovies.get(0));
+        addContinueWatching();
+        title("تازه‌ترین فیلم‌ها","");rail("movie");
+        title("سریال‌ها برای تماشای پشت‌سرهم","");rail("series");
+    }
+    private void updateFeatured(FarsiPlexTitle item){
+        if(item==null||featuredTitle==null)return;
+        featured=item;featuredTitle.setText(item.name);
+        featuredDescription.setText(item.description.isEmpty()?"یک انتخاب تازه از سینمای ایران":item.description);
+        if(featuredBackdrop!=null&&!item.poster.isEmpty())images.load(featuredBackdrop,item.poster);
+    }
+    private void addContinueWatching(){
+        List<LibraryStore.Entry> entries=new LibraryStore(this).resumeList();
+        if(entries.isEmpty())return;
+        title("ادامهٔ تماشا","از همان لحظه‌ای که توقف کردی");
+        HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
+        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);slider.addView(row);
+        int count=0;
+        for(LibraryStore.Entry entry:entries){
+            if(entry.positionMs<=0 || !StreamDetector.isDirectMedia(entry.url))continue;
+            LinearLayout tile=vertical();tile.setPadding(dp(9),dp(9),dp(9),dp(10));
+            tile.setBackground(shape(PANEL,10,false));tile.setFocusable(true);
+            TextView name=text(entry.title,16,WHITE,true);name.setMaxLines(2);
+            tile.addView(name,lp(-1,64));
+            long minutes=Math.max(1,entry.positionMs/60000);
+            tile.addView(text("▶  ادامه از دقیقهٔ "+minutes,12,0xFFE5BBC0,false),lp(-1,37));
+            tile.setOnFocusChangeListener((v,focus)->{
+                tile.setBackground(shape(focus?0xFF4A1820:PANEL,10,focus));
+                tile.setScaleX(focus?1.03f:1);tile.setScaleY(focus?1.03f:1);
+            });
+            tile.setOnClickListener(v->play(entry.title,entry.url));
+            LinearLayout.LayoutParams params=lp(260,127);params.rightMargin=dp(14);
+            row.addView(tile,params);if(++count==12)break;
+        }
+        if(count>0)content.addView(slider,lp(-1,143));
     }
     private void rail(String kind){
         HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
         LinearLayout row=horizontal();row.setGravity(Gravity.TOP);slider.addView(row);
         slider.setFocusable(false);
         row.addView(text("در حال دریافت اطلاعات…",15,MUTED,false),lp(360,90));
-        content.addView(slider,lp(-1,296));
+        content.addView(slider,lp(-1,320));
         int token=generation;
         List<FarsiPlexTitle> cache="movie".equals(kind)?loadedMovies:loadedSeries;
         if(!cache.isEmpty()){
@@ -153,6 +213,7 @@ public final class MainActivity extends Activity {
             if(!list.isEmpty()){
                 cache.clear();cache.addAll(list);
                 for(int i=0;i<Math.min(list.size(),18);i++)card(row,list.get(i));
+                if("movie".equals(kind))updateFeatured(list.get(0));
             }else{
                 row.addView(text("فهرست دریافت نشد. اینترنت، DNS یا محدودیت دسترسی سایت را بررسی کن.",15,MUTED,false),lp(750,85));
             }
@@ -162,7 +223,7 @@ public final class MainActivity extends Activity {
     private void browse(String kind){
         parentSeries=null;section=kind;page=1;fetching=false;hasMore=true;seen.clear();
         begin("movie".equals(kind)?"movies":"series");
-        title("movie".equals(kind)?"فیلم‌های FarsiPlex":"سریال‌های FarsiPlex","فقط اطلاعات عمومی سایت، بدون وب‌گردی و با کنترل ریموت");
+        title("movie".equals(kind)?"فیلم‌ها":"سریال‌ها","بهترین انتخابت را پیدا کن");
         listingContainer=vertical();content.addView(listingContainer,lp(-1,-2));
         nextPage=button("نمایش عنوان‌های بیشتر",true,this::fetchNextPage);
         LinearLayout.LayoutParams np=lp(272,53);np.topMargin=dp(16);content.addView(nextPage,np);
@@ -170,7 +231,7 @@ public final class MainActivity extends Activity {
     }
     private int columns(){
         float width=getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density;
-        return Math.max(3,(int)((width-100)/184));
+        return Math.max(3,(int)((width-100)/200));
     }
     private void fetchNextPage(){
         if(fetching||!hasMore||page>10)return;
@@ -190,7 +251,7 @@ public final class MainActivity extends Activity {
                 if(!seen.add(item.url))continue;
                 if(added%perRow==0){
                     row=horizontal();row.setGravity(Gravity.TOP);
-                    LinearLayout.LayoutParams rp=lp(-1,292);rp.bottomMargin=dp(14);
+                    LinearLayout.LayoutParams rp=lp(-1,316);rp.bottomMargin=dp(13);
                     listingContainer.addView(row,rp);
                     if(firstRow==null)firstRow=row;
                 }
@@ -203,23 +264,24 @@ public final class MainActivity extends Activity {
                 final View first=firstRow.getChildAt(0);
                 if(p==1 || nextPage.isFocused())first.post(first::requestFocus);
             }
-            info("FarsiPlex · "+seen.size()+" عنوان · قابل پخش بودن مستقل از کاتالوگ است");
+            info(seen.size()+" عنوان برای تماشا پیدا شد");
         });
     }
     private void card(LinearLayout row,FarsiPlexTitle item){
         LinearLayout cell=vertical();cell.setPadding(dp(6),dp(6),dp(6),dp(6));
-        cell.setBackground(shape(0xFF111C2D,11,false));cell.setFocusable(true);cell.setClickable(true);
+        cell.setBackground(shape(0xFF141419,10,false));cell.setFocusable(true);cell.setClickable(true);
         ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        poster.setBackground(shape(0xFF203349,9,false));cell.addView(poster,lp(146,197));
+        poster.setBackground(shape(0xFF2A292F,8,false));cell.addView(poster,lp(160,217));
         if(!item.poster.isEmpty())images.load(poster,item.poster);
         TextView name=text(item.name,14,WHITE,true);name.setSingleLine(true);name.setEllipsize(TextUtils.TruncateAt.END);
         cell.addView(name,lp(-1,27));
         boolean playable=streams.get("farsiplex:"+item.url)!=null;
-        cell.addView(text(playable?"▶  منبع شخصی آماده":(item.year.isEmpty()?"اطلاعات فیلم":item.year),11,playable?TEAL:MUTED,false),lp(-1,24));
+        cell.addView(text(playable?"▶  آمادهٔ تماشا":(item.year.isEmpty()?"کشف بیشتر":item.year),11,playable?0xFFFF7474:MUTED,false),lp(-1,24));
         cell.setOnFocusChangeListener((v,focused)->{
-            cell.setBackground(shape(focused?0xFF17434B:0xFF111C2D,11,focused));
-            cell.setScaleX(focused?1.04f:1);cell.setScaleY(focused?1.04f:1);
-            // Never reorder poster siblings on focus: D-pad indices must remain stable.
+            cell.setBackground(shape(focused?0xFF492127:0xFF141419,10,focused));
+            cell.setScaleX(focused?1.055f:1);cell.setScaleY(focused?1.055f:1);
+            cell.setElevation(focused?dp(14):0);
+            if(focused)cell.bringToFront();
         });
         cell.setOnClickListener(v->detail(item));
         // Do not depend on Android's geometry-based focus search through nested
@@ -237,7 +299,7 @@ public final class MainActivity extends Activity {
             }
             return false;
         });
-        LinearLayout.LayoutParams p=lp(172,274);p.rightMargin=dp(13);row.addView(cell,p);
+        LinearLayout.LayoutParams p=lp(186,302);p.rightMargin=dp(13);row.addView(cell,p);
     }
     /** Explicit TV focus traversal between poster rows, including lazy-loaded pages. */
     private boolean focusPoster(View target){
@@ -293,8 +355,8 @@ public final class MainActivity extends Activity {
     private String returnScreen;
     private void detail(FarsiPlexTitle item){
         if(!"detail".equals(screen)){
-            returnView=root.getChildAt(0); returnFocus=getCurrentFocus();
-            returnContent=content; returnStatus=status; returnScreen=screen;
+            returnView=root.getChildAt(0);returnFocus=getCurrentFocus();
+            returnContent=content;returnStatus=status;returnScreen=screen;
         }
         selected=item;showDetail(item,false);
         int token=generation;
@@ -308,31 +370,33 @@ public final class MainActivity extends Activity {
         begin("detail");
         LinearLayout presentation=horizontal();presentation.setGravity(Gravity.TOP);
         ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        poster.setBackground(shape(PANEL,13,false));presentation.addView(poster,lp(260,365));
+        poster.setBackground(shape(PANEL,9,false));presentation.addView(poster,lp(258,363));
         if(!item.poster.isEmpty())images.load(poster,item.poster);
         gap(presentation,31);
         LinearLayout info=vertical();presentation.addView(info,new LinearLayout.LayoutParams(0,-2,1));
-        info.addView(text(("movie".equals(item.kind)?"فیلم":"series".equals(item.kind)?"سریال":"قسمت سریال")+"  ·  "+item.year,15,TEAL,true),lp(-1,39));
-        info.addView(text(item.name,34,WHITE,true),lp(-1,-2));
+        info.addView(text(("movie".equals(item.kind)?"فیلم":"series".equals(item.kind)?"سریال":"قسمت سریال")+"  ·  "+item.year,15,0xFFFF8288,true),lp(-1,39));
+        info.addView(text(item.name,40,WHITE,true),lp(-1,-2));
         if(!item.genre.isEmpty())info.addView(text(item.genre,14,MUTED,false),lp(-1,34));
-        TextView summary=text(item.description.isEmpty()?"اطلاعات تکمیلی در حال دریافت است…":item.description,16,0xFFDAE6EF,false);
+        TextView summary=text(item.description.isEmpty()?"اطلاعات تکمیلی در حال دریافت است…":item.description,16,0xFFE0E0E3,false);
         summary.setMaxLines(8);LinearLayout.LayoutParams sp=lp(-1,-2);sp.topMargin=dp(17);info.addView(summary,sp);
-        TextView rights=text("داده‌های عمومی: FarsiPlex · صرفاً فهرست، نه مجوز پخش محتوا",12,0xFFF2CA8F,false);
+        TextView rights=text("اطلاعات و دسترسی به محتوا ممکن است با تغییر سرویس‌ها متفاوت باشد.",12,MUTED,false);
         LinearLayout.LayoutParams rp=lp(-1,31);rp.topMargin=dp(14);info.addView(rights,rp);
         LinearLayout controls=horizontal();LinearLayout.LayoutParams cp=lp(-1,62);cp.topMargin=dp(8);info.addView(controls,cp);
         String key="farsiplex:"+item.url;
         String custom=streams.get(key);
         String url=custom!=null?custom:item.publicStream;
-        if(url!=null && !url.isEmpty())controls.addView(button("▶  پخش",true,()->play(item.name,url)),lp(145,53));
+        if(url!=null && !url.isEmpty())controls.addView(button("▶  پخش",true,()->play(item.name,url,item.url)),lp(145,53));
         else controls.addView(button("+  افزودن لینک مجاز",true,()->addStream(item)),lp(206,53));
         if(url==null || url.isEmpty()){
-            TextView noMedia=text(complete?("series".equals(item.kind)?"برای بررسی پخش، یک قسمت را انتخاب کنید.":item.playbackError.isEmpty()?"منبع عمومی قابل‌پخش تأیید نشد؛ بعداً دوباره تلاش کنید.":item.playbackError):"در حال بررسی امکان پخش…",13,0xFFF2CA8F,false);
+            TextView noMedia=text(complete?("series".equals(item.kind)?"یک قسمت را انتخاب کن.":item.playbackError.isEmpty()?"منبع پخش تأیید نشده است؛ بعداً دوباره امتحان کن.":item.playbackError):"در حال بررسی امکان پخش…",13,0xFFF2CA8F,false);
             LinearLayout.LayoutParams nm=lp(-1,-2);nm.topMargin=dp(6);info.addView(noMedia,nm);
         }
         // AI search is opt-in and uses a separately deployed Worker. No API key in Android.
-        LinearLayout aiActions=horizontal();
-        LinearLayout.LayoutParams aiLayout=lp(-1,60);aiLayout.topMargin=dp(11);info.addView(aiActions,aiLayout);
-        aiActions.addView(button("✨  بررسی پخش با DeepSeek",false,()->resolveWithAI(item)),lp(280,50));
+        if((url==null||url.isEmpty())&&NamakadeCatalog.safeUrl(item.url).isEmpty()){
+            LinearLayout aiActions=horizontal();
+            LinearLayout.LayoutParams aiLayout=lp(-1,60);aiLayout.topMargin=dp(11);info.addView(aiActions,aiLayout);
+            aiActions.addView(button("بررسی منبع جایگزین",false,()->resolveWithAI(item)),lp(247,50));
+        }
         gap(controls,9);
         controls.addView(button(isFavorite(item)?"♥ حذف علاقه‌مندی":"♡ علاقه‌مندی",false,()->{
             toggleFavorite(item);showDetail(item,complete);
@@ -342,19 +406,33 @@ public final class MainActivity extends Activity {
         content.addView(presentation,lp(-1,-2));
         if(controls.getChildCount()>0)controls.getChildAt(0).requestFocus();
         if("series".equals(item.kind)){
-            title("قسمت‌های سریال",complete?"هر قسمت منبع پخش جداگانه دارد":"در حال دریافت فهرست قسمت‌ها…");
+            title("قسمت‌ها",complete?"قسمت موردنظرت را انتخاب کن":"در حال دریافت قسمت‌ها…");
             if(complete && item.episodes.isEmpty())content.addView(text("فهرست قسمت‌ها در صفحهٔ عمومی دریافت نشد.",15,MUTED,false),lp(-1,50));
             for(FarsiPlexTitle ep:item.episodes){
                 String epKey="farsiplex:"+ep.url;
                 String stream=streams.get(epKey);
-                TextView b=button((stream==null?"+  ":"▶  ")+ep.name,false,()->{
-                    returnEpisodeUrl=ep.url;parentSeries=item;detail(ep);
+                LinearLayout episodeRow=horizontal();episodeRow.setPadding(dp(9),dp(5),dp(12),dp(5));
+                episodeRow.setFocusable(true);episodeRow.setClickable(true);
+                episodeRow.setBackground(shape(PANEL,8,false));
+                ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                cover.setBackground(shape(0xFF28282F,7,false));
+                episodeRow.addView(cover,lp(105,73));
+                if(!ep.poster.isEmpty())images.load(cover,ep.poster);
+                gap(episodeRow,17);
+                LinearLayout epText=vertical();
+                epText.addView(text(ep.name,17,WHITE,true),lp(-1,43));
+                epText.addView(text(stream==null?"قسمت را باز کن":"▶  آمادهٔ پخش",12,MUTED,false),lp(-1,27));
+                episodeRow.addView(epText,new LinearLayout.LayoutParams(0,-2,1));
+                episodeRow.setOnClickListener(v->{returnEpisodeUrl=ep.url;parentSeries=item;detail(ep);});
+                episodeRow.setOnFocusChangeListener((v,focused)->{
+                    episodeRow.setBackground(shape(focused?0xFF4A2029:PANEL,8,focused));
+                    episodeRow.setScaleX(focused?1.012f:1);episodeRow.setScaleY(focused?1.012f:1);
                 });
-                LinearLayout.LayoutParams epLp=lp(-1,54);epLp.bottomMargin=dp(8);content.addView(b,epLp);
-                if(ep.url.equals(returnEpisodeUrl))b.requestFocus();
+                LinearLayout.LayoutParams epLp=lp(-1,88);epLp.bottomMargin=dp(8);content.addView(episodeRow,epLp);
+                if(ep.url.equals(returnEpisodeUrl))episodeRow.requestFocus();
             }
         }
-        info("FarsiPlex · "+item.url+" · "+(complete?"اطلاعات دریافت شد":"در حال دریافت جزئیات…"));
+        info(complete?"اطلاعات عنوان آماده است":"در حال دریافت جزئیات…");
     }
     private void backToList(){
         if(selected!=null&&"episode".equals(selected.kind)&&parentSeries!=null){
@@ -391,7 +469,9 @@ public final class MainActivity extends Activity {
             if(origin.isEmpty()||token.length()<12){
                 Toast.makeText(this,"URL HTTPS معتبر و کد حداقل ۱۲ کاراکتری لازم است",Toast.LENGTH_LONG).show();return;
             }
-            if(!new ResolverSecretStore(preferences).save(token)){Toast.makeText(this,"ذخیرهٔ امن توکن انجام نشد",Toast.LENGTH_LONG).show();return;}
+            if(!new ResolverSecretStore(preferences).save(token)){
+                Toast.makeText(this,"ذخیرهٔ امن کد انجام نشد",Toast.LENGTH_LONG).show();return;
+            }
             preferences.edit().putString("ai_worker_origin",origin).apply();
             dialog.dismiss();
             if(afterSave!=null)afterSave.run();
@@ -427,7 +507,7 @@ public final class MainActivity extends Activity {
         field.setHint("https://…/video.m3u8 یا video.mp4");
         field.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
         new AlertDialog.Builder(this).setTitle("منبع پخش مجاز برای «"+item.name+"»")
-            .setMessage("تنها لینک مستقیم HTTPS متعلق به خودت یا دارای اجازهٔ استفاده را وارد کن. برنامه محتوای FarsiPlex را استخراج یا قفل اشتراک را دور نمی‌زند.")
+            .setMessage("تنها لینک HTTPS با اجازهٔ استفاده را وارد کن. برنامه به محتوای قفل‌شده یا اشتراکی دسترسی غیرمجاز نمی‌گیرد.")
             .setView(field).setNegativeButton("لغو",null).setPositiveButton("ذخیره",(d,w)->{
                 if(!streams.put("farsiplex:"+item.url,item.name,field.getText().toString().trim())){
                     Toast.makeText(this,"لینک مستقیم معتبر MP4/HLS/DASH لازم است",Toast.LENGTH_LONG).show();return;
@@ -435,16 +515,18 @@ public final class MainActivity extends Activity {
                 showDetail(item,true);
             }).show();
     }
-    private void play(String title,String url){
+    private void play(String title,String url){play(title,url,"");}
+    private void play(String title,String url,String page){
         if(!StreamDetector.isDirectMedia(url)){Toast.makeText(this,"منبع پخش معتبر نیست",Toast.LENGTH_LONG).show();return;}
         Intent intent=new Intent(this,PlayerActivity.class);
         intent.putExtra(PlayerActivity.EXTRA_TITLE,title);intent.putExtra(PlayerActivity.EXTRA_URL,url);
+        if(StreamDetector.isHttpsUrl(page))intent.putExtra(PlayerActivity.EXTRA_PAGE_URL,page);
         startActivity(intent);
     }
     private void askSearch(){
         EditText input=new EditText(this);input.setSingleLine(true);input.setTextColor(WHITE);input.setHintTextColor(MUTED);
         input.setText(searchTerm);input.setHint("نام فیلم یا سریال…");input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("جست‌وجو در FarsiPlex")
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("جست‌وجوی فیلم و سریال")
             .setView(input).setNegativeButton("لغو",null).setPositiveButton("جست‌وجو",(d,w)->search(input.getText().toString())).create();
         input.setOnEditorActionListener((v,id,event)->{
             if(id==EditorInfo.IME_ACTION_SEARCH||(event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER)){
@@ -458,18 +540,16 @@ public final class MainActivity extends Activity {
     private void search(String query){
         searchTerm=query==null?"":query.trim();if(searchTerm.isEmpty())return;
         if(searchTerm.length()>100)searchTerm=searchTerm.substring(0,100);
-        begin("search");title("جست‌وجو: "+searchTerm,"جست‌وجوی عمومی خود FarsiPlex");
+        begin("search");title("نتایج برای «"+searchTerm+"»","جست‌وجوی هم‌زمان بین منابع موجود");
         LinearLayout results=vertical();content.addView(results,lp(-1,-2));
-        TextView wait=text("در حال جست‌وجوی فیلم و سریال…",15,MUTED,false);results.addView(wait,lp(-1,70));
-        String q=normalizeSearch(searchTerm);int token=generation;
-        List<FarsiPlexTitle> found=new ArrayList<>();Set<String> urls=new HashSet<>();
+        results.addView(text("در حال جست‌وجو…",15,MUTED,false),lp(-1,75));
+        int token=generation;
         source.search(searchTerm,(items,error)->{
             if(destroyed||generation!=token)return;
             results.removeAllViews();
-            if(error!=null){results.addView(text(error,15,MUTED,false),lp(-1,76));info(error);return;}
-            if(items.isEmpty())results.addView(text("عنوانی در جست‌وجوی سایت پیدا نشد.",15,MUTED,false),lp(-1,76));
+            if(items.isEmpty())results.addView(text(error==null?"عنوانی پیدا نشد.":error,15,MUTED,false),lp(-1,75));
             else showGrid(results,items);
-            info("نتایج جست‌وجوی FarsiPlex: "+items.size());
+            info(items.size()+" نتیجه پیدا شد");
         });
     }
     private void scanSearch(String kind,int p,int token,String q,List<FarsiPlexTitle> found,Set<String> urls,LinearLayout result,Runnable finished){
@@ -490,7 +570,7 @@ public final class MainActivity extends Activity {
     private void showGrid(LinearLayout container,List<FarsiPlexTitle> items){
         LinearLayout row=null;int perRow=columns();
         for(int i=0;i<items.size();i++){
-            if(i%perRow==0){row=horizontal();row.setGravity(Gravity.TOP);container.addView(row,lp(-1,289));}
+            if(i%perRow==0){row=horizontal();row.setGravity(Gravity.TOP);container.addView(row,lp(-1,318));}
             card(row,items.get(i));
         }
     }
@@ -499,10 +579,17 @@ public final class MainActivity extends Activity {
         try{JSONArray json=new JSONArray(preferences.getString("favorites","[]"));
             for(int i=0;i<Math.min(json.length(),150);i++){
                 JSONObject j=json.optJSONObject(i);if(j==null)continue;
-                String url=FarsiPlexUrlPolicy.normalize(FarsiPlexUrlPolicy.SITE,j.optString("url"));
-                String kind=FarsiPlexUrlPolicy.mediaType(url);if(kind.isEmpty())continue;
+                String raw=j.optString("url","");
+                String url=NamakadeCatalog.safeUrl(raw);
+                String kind=j.optString("kind","");
+                if(url.isEmpty()){
+                    url=FarsiPlexUrlPolicy.normalize(FarsiPlexUrlPolicy.SITE,raw);
+                    kind=FarsiPlexUrlPolicy.mediaType(url);
+                }else if(kind.isEmpty())kind=url.contains("/movies/")?"movie":"series";
+                if(url.isEmpty()||kind.isEmpty())continue;
                 FarsiPlexTitle item=new FarsiPlexTitle(url,kind,j.optString("title"));
-                item.poster=FarsiPlexUrlPolicy.normalize(FarsiPlexUrlPolicy.SITE,j.optString("poster"));
+                String poster=j.optString("poster","");
+                if(poster.startsWith("https://"))item.poster=poster;
                 result.add(item);
             }
         }catch(Exception ignored){}
@@ -515,7 +602,7 @@ public final class MainActivity extends Activity {
         JSONArray json=new JSONArray();
         try{for(int i=0;i<Math.min(f.size(),100);i++){
             FarsiPlexTitle t=f.get(i);JSONObject value=new JSONObject();
-            value.put("url",t.url);value.put("title",t.name);value.put("poster",t.poster);json.put(value);
+            value.put("url",t.url);value.put("title",t.name);value.put("poster",t.poster);value.put("kind",t.kind);json.put(value);
         }}catch(Exception ignored){}
         preferences.edit().putString("favorites",json.toString()).apply();
     }
@@ -534,7 +621,3 @@ public final class MainActivity extends Activity {
         destroyed=true;generation++;source.close();images.close();aiResolver.close();super.onDestroy();
     }
 }
-
-
-
-

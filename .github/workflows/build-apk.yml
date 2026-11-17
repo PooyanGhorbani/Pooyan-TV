@@ -1,8 +1,8 @@
-name: Build Pooyan TV v0.4.3 Native Playback Preview
+name: Build Pooyan TV v0.5.0 Cinematic Preview
 on:
   workflow_dispatch:
   push:
-    branches: [main, dev/v0.4.3-native-playback]
+    branches: [dev/v0.5.0-cinematic]
     paths:
       - 'app/**'
       - 'tests/**'
@@ -12,13 +12,12 @@ on:
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
-      - 'resolver-worker/**'
 permissions:
-  contents: write
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -37,44 +36,37 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify Cloudflare Worker tests
+      - name: Worker tests (no deployment)
         run: node --test resolver-worker/resolver.test.mjs
-      - name: Verify offline source and policies
+      - name: Offline security and syntax tests
         run: bash scripts/verify-offline.sh
-      - name: Compile, unit-test parser, lint
+      - name: Build, unit tests and lint
         run: |
           gradle --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug || {
-            sleep 20
+            sleep 15
             gradle --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug
           }
-      - name: Live native public playback HTTP checks
-        run: POOYAN_LIVE_CHECK=1 gradle --no-daemon testDebugUnitTest --rerun-tasks
-      - name: Upload reports even if checks fail
+      - name: Package preview (no automatic TV installation)
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.5.0-cinematic-preview.apk
+          sha256sum Pooyan-TV-v0.5.0-cinematic-preview.apk > SHA256SUMS-v0.5.0.txt
+      - name: Upload preview APK and SHA256
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pooyan-TV-v0.5.0-Cinematic-Preview
+          path: |
+            Pooyan-TV-v0.5.0-cinematic-preview.apk
+            SHA256SUMS-v0.5.0.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-FarsiPlex-v0.4.3-reports
+          name: Pooyan-TV-v0.5.0-Reports
           path: |
             app/build/reports/lint-results-debug.*
             app/build/reports/tests/**
             app/build/test-results/**
-            app/build/reports/live-playback.tsv
           if-no-files-found: ignore
           retention-days: 14
-      - name: Upload preview APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Pooyan-TV-FarsiPlex-v0.4.3-Preview-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 30
-      - name: Publish prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4.3-preview-r2.apk
-          sha256sum Pooyan-TV-v0.4.3-preview-r2.apk > SHA256SUMS-v0.4.3-r2.txt
-          gh release view v0.4.3 >/dev/null 2>&1 || gh release create v0.4.3 --target dev/v0.4.3-native-playback --prerelease --title 'Pooyan TV v0.4.3' --notes 'Native FarsiPlex playback preview. See docs/V043_PLAYBACK_RESULTS_FA.md for actual results. No v0.4.3 device playback test; no TV installation performed.'
-          if ! gh release view v0.4.3 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.4.3-preview-r2.apk; then
-            gh release upload v0.4.3 Pooyan-TV-v0.4.3-preview-r2.apk SHA256SUMS-v0.4.3-r2.txt
-          fi

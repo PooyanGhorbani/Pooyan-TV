@@ -20,11 +20,7 @@ public final class CatalogImages {
         @Override protected int sizeOf(String k,Bitmap b){return Math.max(1,b.getByteCount()/1024);}
     };
     public CatalogImages(Activity a){activity=a;}
-    private static boolean isPoster(String url){
-        String trusted=FarsiPlexUrlPolicy.normalize(FarsiPlexUrlPolicy.SITE,url);
-        return !trusted.isEmpty() && trusted.toLowerCase(java.util.Locale.ROOT)
-                .matches(".*\\.(jpg|jpeg|webp|png)/?");
-    }
+    private static boolean isPoster(String url){return ImageUrlPolicy.allowed(url);}
     public void load(ImageView view,String url){
         if(!isPoster(url))return;
         view.setTag(url);
@@ -42,7 +38,7 @@ public final class CatalogImages {
                     if(code>=300&&code<400){
                         String next=con.getHeaderField("Location");con.disconnect();con=null;
                         if(next==null)return;
-                        String resolved=FarsiPlexUrlPolicy.normalize(target,next);
+                        String resolved=new URL(new URL(target),next).toString();
                         if(!isPoster(resolved))return;
                         target=resolved;continue;
                     }
