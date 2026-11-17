@@ -416,7 +416,8 @@ public final class PlayerActivity extends Activity {
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             int key = e.getKeyCode();
             if(key==KeyEvent.KEYCODE_BACK){
-                if(timelinePanel!=null&&timelinePanel.isShown()&&player!=null&&player.isPlaying()){
+                if(e.getRepeatCount()>0)return true;
+                if(RemoteInputPolicy.backHides(timelinePanel!=null&&timelinePanel.isShown(),player!=null&&player.isPlaying())){
                     handler.removeCallbacks(hideControls);hideControls.run();return true;
                 }
                 finish();return true;

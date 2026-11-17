@@ -14,6 +14,7 @@ public final class TvUi {
     public static final int TEXT = Color.WHITE;
     public static final int MUTED = Color.rgb(169, 182, 206);
     private TvUi() {}
+    private static final java.util.Map<View,RemoteInputPolicy> selectStates=new java.util.WeakHashMap<>();
 
     public static int dp(Context c, float n) { return Math.round(n * c.getResources().getDisplayMetrics().density); }
 
@@ -35,7 +36,9 @@ public final class TvUi {
     public static boolean activate(View view,int key,android.view.KeyEvent event){
         if(key!=android.view.KeyEvent.KEYCODE_DPAD_CENTER&&key!=android.view.KeyEvent.KEYCODE_ENTER
             &&key!=android.view.KeyEvent.KEYCODE_NUMPAD_ENTER&&key!=android.view.KeyEvent.KEYCODE_BUTTON_A)return false;
-        if(event.getAction()==android.view.KeyEvent.ACTION_UP&&!event.isCanceled())view.performClick();
+        RemoteInputPolicy state=selectStates.get(view);
+        if(state==null){state=new RemoteInputPolicy();selectStates.put(view,state);}
+        if(state.select(event.getAction()==android.view.KeyEvent.ACTION_DOWN,event.getAction()==android.view.KeyEvent.ACTION_UP,event.isCanceled(),event.getRepeatCount()))view.performClick();
         return true;
     }
     public static void remoteClick(View view){view.setOnKeyListener((v,k,e)->activate(v,k,e));}
