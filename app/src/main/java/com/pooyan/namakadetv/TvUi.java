@@ -31,6 +31,14 @@ public final class TvUi {
         return v;
     }
 
+    /** Consume paired OK events once, including gamepad Select, without key-repeat clicks. */
+    public static boolean activate(View view,int key,android.view.KeyEvent event){
+        if(key!=android.view.KeyEvent.KEYCODE_DPAD_CENTER&&key!=android.view.KeyEvent.KEYCODE_ENTER
+            &&key!=android.view.KeyEvent.KEYCODE_NUMPAD_ENTER&&key!=android.view.KeyEvent.KEYCODE_BUTTON_A)return false;
+        if(event.getAction()==android.view.KeyEvent.ACTION_UP&&!event.isCanceled())view.performClick();
+        return true;
+    }
+    public static void remoteClick(View view){view.setOnKeyListener((v,k,e)->activate(v,k,e));}
     public static TextView focusButton(Context c, String label, boolean primary, Runnable onClick) {
         TextView v = text(c, label, 16, TEXT, true);
         v.setGravity(Gravity.CENTER);
@@ -41,6 +49,7 @@ public final class TvUi {
         v.setFocusable(true);
         v.setClickable(true);
         v.setOnClickListener(view -> onClick.run());
+        remoteClick(v);
         v.setOnFocusChangeListener((view, focus) -> {
             v.setBackground(bg(focus ? BLUE : normal, 12, c));
             v.setScaleX(focus ? 1.05f : 1f);

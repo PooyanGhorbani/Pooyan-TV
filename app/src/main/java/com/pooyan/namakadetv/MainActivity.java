@@ -46,7 +46,9 @@ public final class MainActivity extends Activity {
     private AiResolverClient aiResolver;
     private SharedPreferences preferences;
     private boolean destroyed;
-    private int generation, page=1;
+    private int generation, detailRequest, page=1;
+    private LinearLayout continueSlot,detailControls,navigationBar;
+    private boolean returnedFromPlayer;
     private String screen="home", section="movie", searchTerm="";
     private FarsiPlexTitle selected;
     private FarsiPlexTitle parentSeries;
@@ -68,7 +70,7 @@ public final class MainActivity extends Activity {
     }
     private int dp(float v){return TvUi.dp(this,v);}
     private LinearLayout vertical(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
-    private LinearLayout horizontal(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
+    private LinearLayout horizontal(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);l.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);return l;}
     private LinearLayout.LayoutParams lp(int w,int h){return new LinearLayout.LayoutParams(w<0?w:dp(w),h<0?h:dp(h));}
     private GradientDrawable shape(int color,int radius,boolean focus){
         GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));
@@ -89,13 +91,13 @@ public final class MainActivity extends Activity {
             v.setScaleX(focused?1.035f:1);v.setScaleY(focused?1.035f:1);
             v.setElevation(focused?dp(10):0);
         });
-        v.setOnClickListener(view->onClick.run());return v;
+        v.setTag(title);v.setOnClickListener(view->onClick.run());TvUi.remoteClick(v);return v;
     }
     private void gap(LinearLayout l,int width){l.addView(new View(this),lp(width,1));}
     private void begin(String destination){
         screen=destination;generation++;root.removeAllViews();
         LinearLayout outer=vertical();root.addView(outer,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout navigation=horizontal();navigation.setPadding(dp(41),dp(13),dp(32),dp(8));
+        LinearLayout navigation=horizontal();navigationBar=navigation;navigation.setPadding(dp(41),dp(13),dp(32),dp(8));
         navigation.setBackgroundColor(0xFF0B0B0F);
         TextView brand=text("POOYAN",24,TEAL,true);brand.setLetterSpacing(.07f);
         navigation.addView(brand,lp(179,47));
@@ -107,6 +109,7 @@ public final class MainActivity extends Activity {
         navigation.addView(button("⌕  جست‌وجو",destination.equals("search"),this::askSearch),lp(137,41));gap(navigation,9);
         navigation.addView(button("⚙",false,()->configureAI(null)),lp(53,41));
         outer.addView(navigation,lp(-1,65));
+        navigation.getChildAt(1).requestFocus();
         ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);
         content=vertical();content.setPadding(dp(40),dp(6),dp(36),dp(35));
         scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
@@ -158,9 +161,18 @@ public final class MainActivity extends Activity {
         actions.addView(button("اطلاعات بیشتر",false,()->{
             if(featured!=null)detail(featured);else browse("series");
         }),lp(177,50));
+        actions.getChildAt(0).setTag("home-primary");
+        for(int i=0;i<actions.getChildCount();i++)actions.getChildAt(i).setOnKeyListener((v,k,e)->{
+            if(TvUi.activate(v,k,e))return true;
+            if(e.getAction()!=KeyEvent.ACTION_DOWN)return false;
+            if(k==KeyEvent.KEYCODE_DPAD_DOWN){List<LinearLayout> rows=new ArrayList<>();posterRows(content,rows);if(!rows.isEmpty())return focusPoster(rows.get(0).getChildAt(0));return true;}
+            if(k==KeyEvent.KEYCODE_DPAD_UP)return focusPoster(navigationBar.getChildAt(1));
+            return false;
+        });
         story.addView(actions,lp(-1,53));
         content.addView(hero,lp(-1,340));
         if(!loadedMovies.isEmpty())updateFeatured(loadedMovies.get(0));
+        continueSlot=vertical();content.addView(continueSlot,lp(-1,-2));
         addContinueWatching();
         title("تازه‌ترین فیلم‌ها","");rail("movie");
         title("سریال‌ها برای تماشای پشت‌سرهم","");rail("series");
@@ -172,33 +184,38 @@ public final class MainActivity extends Activity {
         if(featuredBackdrop!=null&&!item.poster.isEmpty())images.load(featuredBackdrop,item.poster);
     }
     private void addContinueWatching(){
+        if(continueSlot==null)return;
+        continueSlot.removeAllViews();
         List<LibraryStore.Entry> entries=new LibraryStore(this).resumeList();
-        if(entries.isEmpty())return;
-        title("ادامهٔ تماشا","از همان لحظه‌ای که توقف کردی");
-        HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
-        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);slider.addView(row);
+        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);
+        HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);slider.addView(row);
         int count=0;
         for(LibraryStore.Entry entry:entries){
-            if(entry.positionMs<=0 || !StreamDetector.isDirectMedia(entry.url))continue;
-            LinearLayout tile=vertical();tile.setPadding(dp(9),dp(9),dp(9),dp(10));
-            tile.setBackground(shape(PANEL,10,false));tile.setFocusable(true);
-            TextView name=text(entry.title,16,WHITE,true);name.setMaxLines(2);
-            tile.addView(name,lp(-1,64));
-            long minutes=Math.max(1,entry.positionMs/60000);
-            tile.addView(text("▶  ادامه از دقیقهٔ "+minutes,12,0xFFE5BBC0,false),lp(-1,37));
-            tile.setOnFocusChangeListener((v,focus)->{
-                tile.setBackground(shape(focus?0xFF4A1820:PANEL,10,focus));
-                tile.setScaleX(focus?1.03f:1);tile.setScaleY(focus?1.03f:1);
+            if(entry.positionMs<=0||!StreamDetector.isDirectMedia(entry.url))continue;
+            LinearLayout tile=vertical();tile.setTag("resume:"+PlaybackResumePolicy.identity(entry.url,entry.pageUrl));
+            tile.setPadding(dp(12),dp(10),dp(12),dp(10));tile.setBackground(shape(PANEL,10,false));
+            tile.setFocusable(true);tile.setClickable(true);TvUi.remoteClick(tile);
+            TextView name=text(entry.title,16,WHITE,true);name.setMaxLines(2);tile.addView(name,lp(-1,56));
+            tile.addView(text("▶  ادامه از "+PlaybackResumePolicy.time(entry.positionMs),12,0xFFE5BBC0,false),lp(-1,30));
+            tile.setOnFocusChangeListener((v,focus)->tile.setBackground(shape(focus?0xFF4A1820:PANEL,10,focus)));
+            tile.setOnClickListener(v->{
+                String raw=entry.pageUrl;String kind=FarsiPlexUrlPolicy.mediaType(raw);
+                if(!NamakadeCatalog.safeUrl(raw).isEmpty())kind=raw.contains("/episodes/")?"episode":raw.contains("/series")?"series":"movie";
+                if(!kind.isEmpty())detail(new FarsiPlexTitle(raw,kind,entry.title));
+                else play(entry.title,entry.url,entry.pageUrl);
             });
-            tile.setOnClickListener(v->play(entry.title,entry.url));
-            LinearLayout.LayoutParams params=lp(260,127);params.rightMargin=dp(14);
-            row.addView(tile,params);if(++count==12)break;
+            tile.setOnKeyListener((v,k,e)->posterKey(v,k,e));
+            LinearLayout.LayoutParams params=lp(260,114);params.rightMargin=dp(14);row.addView(tile,params);
+            if(++count==12)break;
         }
-        if(count>0)content.addView(slider,lp(-1,143));
+        if(count>0){
+            TextView heading=text("ادامهٔ تماشا",23,WHITE,true);heading.setPadding(0,dp(18),0,dp(8));
+            continueSlot.addView(heading,lp(-1,60));continueSlot.addView(slider,lp(-1,130));
+        }
     }
     private void rail(String kind){
         HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
-        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);slider.addView(row);
+        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);row.setTag("poster-row");slider.addView(row);
         slider.setFocusable(false);
         row.addView(text("در حال دریافت اطلاعات…",15,MUTED,false),lp(360,90));
         content.addView(slider,lp(-1,320));
@@ -208,16 +225,16 @@ public final class MainActivity extends Activity {
             row.removeAllViews();for(int i=0;i<Math.min(cache.size(),18);i++)card(row,cache.get(i));return;
         }
         source.list(kind,1,(list,error)->{
-            if(destroyed||generation!=token)return;
+            if(destroyed)return;
             row.removeAllViews();
             if(!list.isEmpty()){
                 cache.clear();cache.addAll(list);
                 for(int i=0;i<Math.min(list.size(),18);i++)card(row,list.get(i));
-                if("movie".equals(kind))updateFeatured(list.get(0));
+                if(generation==token&&"movie".equals(kind))updateFeatured(list.get(0));
             }else{
                 row.addView(text("فهرست دریافت نشد. اینترنت، DNS یا محدودیت دسترسی سایت را بررسی کن.",15,MUTED,false),lp(750,85));
             }
-            if(error!=null)info(error);
+            if(generation==token&&error!=null)info(error);
         });
     }
     private void browse(String kind){
@@ -268,8 +285,9 @@ public final class MainActivity extends Activity {
         });
     }
     private void card(LinearLayout row,FarsiPlexTitle item){
+        row.setTag("poster-row");
         LinearLayout cell=vertical();cell.setPadding(dp(6),dp(6),dp(6),dp(6));
-        cell.setBackground(shape(0xFF141419,10,false));cell.setFocusable(true);cell.setClickable(true);
+        cell.setTag(item.url);cell.setBackground(shape(0xFF141419,10,false));cell.setFocusable(true);cell.setClickable(true);
         ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
         poster.setBackground(shape(0xFF2A292F,8,false));cell.addView(poster,lp(160,217));
         if(!item.poster.isEmpty())images.load(poster,item.poster);
@@ -281,25 +299,24 @@ public final class MainActivity extends Activity {
             cell.setBackground(shape(focused?0xFF492127:0xFF141419,10,focused));
             cell.setScaleX(focused?1.055f:1);cell.setScaleY(focused?1.055f:1);
             cell.setElevation(focused?dp(14):0);
-            if(focused)cell.bringToFront();
+            // Elevation highlights focus without reordering the poster row.
         });
         cell.setOnClickListener(v->detail(item));
         // Do not depend on Android's geometry-based focus search through nested
         // ScrollViews: it often jumps from a poster to the top navigation bar.
-        cell.setOnKeyListener((v,key,event)->{
-            if(event.getAction()!=KeyEvent.ACTION_DOWN || event.getRepeatCount()>0)return false;
-            if(key==KeyEvent.KEYCODE_DPAD_LEFT || key==KeyEvent.KEYCODE_DPAD_RIGHT){
-                LinearLayout parent=(LinearLayout)v.getParent();
-                int next=TvPosterFocusPolicy.neighbor(parent.indexOfChild(v),parent.getChildCount(),key==KeyEvent.KEYCODE_DPAD_RIGHT);
-                if(next>=0&&next<parent.getChildCount())return focusPoster(parent.getChildAt(next));
-                return true; // Do not send focus to unrelated top-menu controls.
-            }
-            if(key==KeyEvent.KEYCODE_DPAD_UP || key==KeyEvent.KEYCODE_DPAD_DOWN){
-                return movePosterVertical(v,key==KeyEvent.KEYCODE_DPAD_DOWN);
-            }
-            return false;
-        });
+        cell.setOnKeyListener((v,k,e)->posterKey(v,k,e));
         LinearLayout.LayoutParams p=lp(186,302);p.rightMargin=dp(13);row.addView(cell,p);
+    }
+    private boolean posterKey(View v,int key,KeyEvent event){
+        if(TvUi.activate(v,key,event))return true;
+        if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;
+        if(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT){
+            ViewGroup row=(ViewGroup)v.getParent();
+            int next=TvPosterFocusPolicy.neighbor(row.indexOfChild(v),row.getChildCount(),key==KeyEvent.KEYCODE_DPAD_RIGHT);
+            if(next>=0)focusPoster(row.getChildAt(next));return true;
+        }
+        if(key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_DPAD_DOWN)return movePosterVertical(v,key==KeyEvent.KEYCODE_DPAD_DOWN);
+        return false;
     }
     /** Explicit TV focus traversal between poster rows, including lazy-loaded pages. */
     private boolean focusPoster(View target){
@@ -308,65 +325,58 @@ public final class MainActivity extends Activity {
         target.requestRectangleOnScreen(new android.graphics.Rect(0,0,target.getWidth(),target.getHeight()),false);
         return true;
     }
+    private void posterRows(View view,List<LinearLayout> rows){
+        if("poster-row".equals(view.getTag())&&view instanceof LinearLayout){
+            if(((LinearLayout)view).getChildCount()>0)rows.add((LinearLayout)view);return;
+        }
+        if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)posterRows(group.getChildAt(i),rows);}
+    }
     private boolean movePosterVertical(View poster,boolean down){
         if(!(poster.getParent() instanceof LinearLayout))return false;
-        LinearLayout row=(LinearLayout)poster.getParent();
-        int column=row.indexOfChild(poster);
-        ViewGroup container=(ViewGroup)row.getParent();
-        // Home page: each strip is wrapped by its own HorizontalScrollView.
-        if(container instanceof HorizontalScrollView){
-            ViewGroup stripParent=(ViewGroup)container.getParent();
-            if(stripParent!=null){
-                int index=stripParent.indexOfChild(container);
-                int step=down?1:-1;
-                for(int i=index+step;i>=0&&i<stripParent.getChildCount();i+=step){
-                    View candidate=stripParent.getChildAt(i);
-                    if(!(candidate instanceof HorizontalScrollView))continue;
-                    View view=((HorizontalScrollView)candidate).getChildAt(0);
-                    if(view instanceof LinearLayout){
-                        LinearLayout other=(LinearLayout)view;
-                        if(other.getChildCount()>0 && other.getChildAt(0).isFocusable())
-                            return focusPoster(other.getChildAt(TvPosterFocusPolicy.column(column,other.getChildCount())));
-                    }
-                }
-            }
-            return false; // Let the framework reach the hero buttons/navigation.
+        LinearLayout row=(LinearLayout)poster.getParent();List<LinearLayout> rows=new ArrayList<>();posterRows(content,rows);
+        int index=rows.indexOf(row),column=row.indexOfChild(poster),next=index+(down?1:-1);
+        if(index>=0&&next>=0&&next<rows.size()){
+            LinearLayout target=rows.get(next);return focusPoster(target.getChildAt(TvPosterFocusPolicy.column(column,target.getChildCount())));
         }
-        // Browse/favorites/search: posters are direct children of consecutive rows.
-        int rowPosition=container.indexOfChild(row);
-        int direction=down?1:-1;
-        for(int i=rowPosition+direction;i>=0&&i<container.getChildCount();i+=direction){
-            View candidate=container.getChildAt(i);
-            if(!(candidate instanceof LinearLayout))continue;
-            LinearLayout other=(LinearLayout)candidate;
-            if(other.getChildCount()>0 && other.getChildAt(0).isFocusable()){
-                return focusPoster(other.getChildAt(TvPosterFocusPolicy.column(column,other.getChildCount())));
+        if(down){if(nextPage!=null&&nextPage.isShown())return focusPoster(nextPage);return true;}
+        View hero="home".equals(screen)?root.findViewWithTag("home-primary"):null;
+        return hero!=null?focusPoster(hero):navigationBar!=null&&focusPoster(navigationBar.getChildAt(1));
+    }
+    @Override public boolean dispatchKeyEvent(KeyEvent event){
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN){
+            View focused=getCurrentFocus();
+            if(focused!=null&&focused.getParent()==navigationBar){
+                View hero="home".equals(screen)?root.findViewWithTag("home-primary"):null;
+                if(hero!=null)return focusPoster(hero);
+                List<LinearLayout> rows=new ArrayList<>();posterRows(content,rows);
+                if(!rows.isEmpty())return focusPoster(rows.get(0).getChildAt(0));
             }
         }
-        if(down && container==listingContainer && nextPage!=null && nextPage.isShown())
-            return nextPage.requestFocus();
-        return false;
+        return super.dispatchKeyEvent(event);
     }
 
-    private String returnEpisodeUrl="";
+    private String returnEpisodeUrl="",renderedDetailUrl="";
     private View returnView,returnFocus;
-    private LinearLayout returnContent;
+    private LinearLayout returnContent,returnNavigation;
     private TextView returnStatus;
     private String returnScreen;
     private void detail(FarsiPlexTitle item){
+        int request=++detailRequest;
         if(!"detail".equals(screen)){
             returnView=root.getChildAt(0);returnFocus=getCurrentFocus();
-            returnContent=content;returnStatus=status;returnScreen=screen;
+            returnContent=content;returnNavigation=navigationBar;returnStatus=status;returnScreen=screen;
         }
         selected=item;showDetail(item,false);
         int token=generation;
         source.detail(item,(full,error)->{
-            if(destroyed||!"detail".equals(screen)||selected==null||!selected.url.equals(item.url)||token!=generation)return;
+            if(destroyed||!"detail".equals(screen)||selected==null||!selected.url.equals(item.url)||request!=detailRequest)return;
             selected=full;showDetail(full,true);
             if(error!=null)info(error);
         });
     }
     private void showDetail(FarsiPlexTitle item,boolean complete){
+        Object focusTag="detail".equals(screen)&&item.url.equals(renderedDetailUrl)&&getCurrentFocus()!=null?getCurrentFocus().getTag():null;
+        renderedDetailUrl=item.url;
         begin("detail");
         LinearLayout presentation=horizontal();presentation.setGravity(Gravity.TOP);
         ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -381,7 +391,7 @@ public final class MainActivity extends Activity {
         summary.setMaxLines(8);LinearLayout.LayoutParams sp=lp(-1,-2);sp.topMargin=dp(17);info.addView(summary,sp);
         TextView rights=text("اطلاعات و دسترسی به محتوا ممکن است با تغییر سرویس‌ها متفاوت باشد.",12,MUTED,false);
         LinearLayout.LayoutParams rp=lp(-1,31);rp.topMargin=dp(14);info.addView(rights,rp);
-        LinearLayout controls=horizontal();LinearLayout.LayoutParams cp=lp(-1,62);cp.topMargin=dp(8);info.addView(controls,cp);
+        LinearLayout controls=horizontal();detailControls=controls;LinearLayout.LayoutParams cp=lp(-1,62);cp.topMargin=dp(8);info.addView(controls,cp);
         String key="farsiplex:"+item.url;
         String custom=streams.get(key);
         String url=custom!=null?custom:item.publicStream;
@@ -397,10 +407,12 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams aiLayout=lp(-1,60);aiLayout.topMargin=dp(11);info.addView(aiActions,aiLayout);
             aiActions.addView(button("بررسی منبع جایگزین",false,()->resolveWithAI(item)),lp(247,50));
         }
+        controls.getChildAt(0).setTag("detail-primary");
         gap(controls,9);
         controls.addView(button(isFavorite(item)?"♥ حذف علاقه‌مندی":"♡ علاقه‌مندی",false,()->{
             toggleFavorite(item);showDetail(item,complete);
         }),lp(183,53));
+        controls.getChildAt(2).setTag("detail-favorite");
         gap(controls,9);
         controls.addView(button("بازگشت",false,this::backToList),lp(112,53));
         content.addView(presentation,lp(-1,-2));
@@ -412,7 +424,19 @@ public final class MainActivity extends Activity {
                 String epKey="farsiplex:"+ep.url;
                 String stream=streams.get(epKey);
                 LinearLayout episodeRow=horizontal();episodeRow.setPadding(dp(9),dp(5),dp(12),dp(5));
-                episodeRow.setFocusable(true);episodeRow.setClickable(true);
+                episodeRow.setTag(ep.url);episodeRow.setFocusable(true);episodeRow.setClickable(true);
+                episodeRow.setOnKeyListener((v,k,e)->{
+                    if(TvUi.activate(v,k,e))return true;
+                    if(e.getAction()!=KeyEvent.ACTION_DOWN)return false;
+                    if(k==KeyEvent.KEYCODE_DPAD_UP||k==KeyEvent.KEYCODE_DPAD_DOWN){
+                        int step=k==KeyEvent.KEYCODE_DPAD_DOWN?1:-1;
+                        for(int n=content.indexOfChild(v)+step;n>=0&&n<content.getChildCount();n+=step){
+                            View next=content.getChildAt(n);if(next.isFocusable())return focusPoster(next);
+                        }
+                        if(step<0)return focusPoster(detailControls.getChildAt(0));
+                        return true;
+                    }return false;
+                });
                 episodeRow.setBackground(shape(PANEL,8,false));
                 ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 cover.setBackground(shape(0xFF28282F,7,false));
@@ -432,17 +456,23 @@ public final class MainActivity extends Activity {
                 if(ep.url.equals(returnEpisodeUrl))episodeRow.requestFocus();
             }
         }
+        if(focusTag!=null){View preserved=root.findViewWithTag(focusTag);if(preserved!=null&&preserved.isFocusable())focusPoster(preserved);}
         info(complete?"اطلاعات عنوان آماده است":"در حال دریافت جزئیات…");
     }
     private void backToList(){
+        detailRequest++;
         if(selected!=null&&"episode".equals(selected.kind)&&parentSeries!=null){
             FarsiPlexTitle series=parentSeries;parentSeries=null;selected=series;showDetail(series,true);return;
         }
         if(returnView!=null){
             generation++;root.removeAllViews();root.addView(returnView);
-            screen=returnScreen;content=returnContent;status=returnStatus;
+            screen=returnScreen;content=returnContent;navigationBar=returnNavigation;status=returnStatus;
+            if("home".equals(screen))addContinueWatching();
             View target=returnFocus;returnView=null;
-            if(target!=null)target.post(()->focusPoster(target));
+            if(target!=null){
+                View restored=target.getTag()==null?target:root.findViewWithTag(target.getTag());
+                if(restored!=null)restored.post(()->focusPoster(restored));
+            }
         }else if("series".equals(section))browse("series");else browse("movie");
     }
     private void configureAI(Runnable afterSave){
@@ -521,7 +551,7 @@ public final class MainActivity extends Activity {
         Intent intent=new Intent(this,PlayerActivity.class);
         intent.putExtra(PlayerActivity.EXTRA_TITLE,title);intent.putExtra(PlayerActivity.EXTRA_URL,url);
         if(StreamDetector.isHttpsUrl(page))intent.putExtra(PlayerActivity.EXTRA_PAGE_URL,page);
-        startActivity(intent);
+        returnedFromPlayer=true;startActivity(intent);
     }
     private void askSearch(){
         EditText input=new EditText(this);input.setSingleLine(true);input.setTextColor(WHITE);input.setHintTextColor(MUTED);
@@ -616,6 +646,10 @@ public final class MainActivity extends Activity {
         if("detail".equals(screen))backToList();
         else if(!"home".equals(screen))home();
         else super.onBackPressed();
+    }
+    @Override protected void onResume(){
+        super.onResume();
+        if(returnedFromPlayer){returnedFromPlayer=false;if("home".equals(screen))addContinueWatching();}
     }
     @Override protected void onDestroy(){
         destroyed=true;generation++;source.close();images.close();aiResolver.close();super.onDestroy();

@@ -10,14 +10,14 @@ android {
         applicationId 'com.pooyan.namakadetv'
         minSdk 23
         targetSdk 35
-        versionCode 20
-        versionName '0.5.0'
+        versionCode 21
+        versionName '0.5.1'
     }
 
     buildTypes {
         debug {
             // Side-by-side preview: never requires uninstalling the user's v0.1 app.
-            applicationIdSuffix '.preview050'
+            applicationIdSuffix '.preview051'
         }
         release {
             minifyEnabled false

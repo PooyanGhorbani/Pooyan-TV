@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-/** Optional public catalog adapter. Metadata only until a legitimate playback interface is verified. */
+/** Optional public catalog adapter. Only explicit public HTML5 media is considered, then independently probed. */
 public final class NamakadeRepository {
     private final Activity activity;
     private final ExecutorService executor=Executors.newFixedThreadPool(2);
@@ -66,6 +66,9 @@ public final class NamakadeRepository {
             try{
                 title=NamakadeCatalog.details(fetch(item.url).outerHtml(),item.url,item.kind);
                 if(title.poster.isEmpty())title.poster=item.poster;
+                if(!title.publicStream.isEmpty()&&!MediaProbe.valid(title.publicStream)){
+                    title.publicStream="";title.playbackError="سرور پخش، رسانهٔ قابل‌خواندن ارائه نکرد؛ ممکن است لینک منقضی یا دسترسی محدود باشد.";
+                }
             }catch(Exception e){error="دریافت جزئیات این عنوان ممکن نشد";}
             FarsiPlexTitle result=title;String msg=error;
             activity.runOnUiThread(()->cb.receive(result,msg));

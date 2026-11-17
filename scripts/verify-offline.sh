@@ -42,10 +42,11 @@ assert 'source.list(' in main and 'source.detail(' in main and 'source.search(' 
 assert 'TvPosterFocusPolicy' in main and 'requestFocus' in main
 assert 'FarsiPlexPlayback.resolveDetailed' in sources
 assert 'PlayerActivity.EXTRA_URL' in main
-assert "versionName '0.5.0'" in gradle
-assert "applicationIdSuffix '.preview050'" in gradle
+assert "versionName '0.5.1'" in gradle
+assert "applicationIdSuffix '.preview051'" in gradle
 assert 'sk-proj-' not in sources and 'DEEPSEEK_API_KEY' not in sources
 assert 'AiResolverClient' in main and 'resolveWithAI' in main
+assert 'bringToFront()' not in main, 'Focus must never reorder poster children'
 assert 'FarsiPlex Edition' not in main and 'فیلم‌های FarsiPlex' not in main
 print('PASS provider-neutral cinematic UI, playback path, Android manifest, preview isolation')
 PYSOURCECHECK

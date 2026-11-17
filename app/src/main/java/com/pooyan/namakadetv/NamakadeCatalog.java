@@ -9,7 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Strict metadata-only adapter for the public movie and series pages. No embedded player scraping. */
+/** Source-specific public catalog, episode markup and explicit HTML5 media adapter. No JS execution or private APIs. */
 public final class NamakadeCatalog {
     public static final String BASE="https://namakadeh.com";
     private NamakadeCatalog(){}
@@ -25,7 +25,7 @@ public final class NamakadeCatalog {
             if(!path.equals("/movies")&&!path.equals("/serial")&&!path.startsWith("/movies/")
                     &&!path.startsWith("/iran-1-movies/")&&!path.startsWith("/serieses/")
                     &&!path.startsWith("/series/"))return "";
-            return new URI("https",null,host.toLowerCase(java.util.Locale.ROOT),-1,path,null,null).toString();
+            return new URI("https",null,host.toLowerCase(java.util.Locale.ROOT),-1,path,u.getQuery(),null).toString();
         }catch(Exception ex){return "";}
     }
     public static String start(String kind){return BASE+("series".equals(kind)?"/serial":"/movies");}
@@ -39,7 +39,7 @@ public final class NamakadeCatalog {
             if("movie".equals(kind)&&!(path.startsWith("/movies/")||path.startsWith("/iran-1-movies/")))continue;
             if("series".equals(kind)&&!(path.startsWith("/serieses/")||path.startsWith("/series/")))continue;
             String name="";
-            for(String selector:new String[]{"h3","h4","h2",".title","strong"}){
+            for(String selector:new String[]{".SSh3","h3","h4","h2",".title","strong"}){
                 Element n=a.selectFirst(selector);
                 if(n!=null&&!n.text().trim().isEmpty()){name=n.text().trim();break;}
             }
@@ -47,36 +47,73 @@ public final class NamakadeCatalog {
                 Element img=a.selectFirst("img[alt]");if(img!=null)name=img.attr("alt").trim();
             }
             if(name.isEmpty())name=a.text().replaceAll("(?i)\\b(Watch Now|Episode[s]?:?\\s*\\d+|Director:.*|Genre:.*)\\b", " ").trim();
-            Element card=a.closest("li,.item,.owl-item,.movie-item,.series-item,.col-md-3");
+            Element card=a.closest(".divPicMask2,li,.item,.owl-item,.movie-item,.series-item,.col-md-3");
             String label=(card==null?a.text():card.text()).toLowerCase(java.util.Locale.ROOT);
             if(label.matches("(?s).*\\bforeign\\b.*")||label.contains("خارجی")||label.contains("ترکی")||label.contains("turkish"))continue;
             if(name.length()<2||name.length()>110)continue;
             FarsiPlexTitle item=new FarsiPlexTitle(url,kind,name);
             Element img=a.selectFirst("img");
+            if(img==null&&card!=null)img=card.selectFirst("img");
             if(img!=null){
                 for(String attr:new String[]{"data-src","src"}){
                     String raw=img.absUrl(attr);
-                    if(raw.startsWith("https://") && (raw.matches("(?i).*\\.(png|jpeg|jpg|webp)(\\?.*)?"))){item.poster=raw;break;}
+                    if(ImageUrlPolicy.allowedFor(url,raw)){item.poster=raw;break;}
                 }
             }
             out.add(item);if(out.size()>=70)break;
         }
         return out;
     }
+    private static boolean sameSeries(String page,String episode){
+        String[] a=URI.create(page).getPath().split("/"),b=URI.create(episode).getPath().split("/");
+        return a.length>=3&&b.length>=5&&a[2].equals(b[2]);
+    }
+    public static String publishedMedia(Document doc,String page){
+        if(safeUrl(page).isEmpty())return "";
+        for(Element tag:doc.select("video[src],video source[src]")){
+            String media=tag.absUrl("src");
+            try{URI u=URI.create(media);
+                if(StreamDetector.isDirectMedia(media)&&"media.negahestan.com".equals(u.getHost())&&u.getPort()==-1&&u.getUserInfo()==null)return media;
+            }catch(Exception ignored){}
+        }
+        return "";
+    }
     public static FarsiPlexTitle details(String html,String url,String kind){
         if(safeUrl(url).isEmpty())throw new IllegalArgumentException("unsafe url");
         Document doc=Jsoup.parse(html,url);
-        Element h=doc.selectFirst("h1");String title=h==null?"":h.text().trim();
+        Element h=doc.selectFirst("h1,#divTitrGrid");String title=h==null?"":h.text().trim();
+        Element ogTitle=doc.selectFirst("meta[property=og:title],meta[name=og:title]");
+        if(title.isEmpty()&&ogTitle!=null)title=ogTitle.attr("content").split("\\|")[0].trim();
         if(title.isEmpty())title=url.substring(url.lastIndexOf('/')+1).replace('-',' ');
         FarsiPlexTitle item=new FarsiPlexTitle(url,kind,title);
-        Element img=doc.selectFirst("meta[property=og:image]");
+        Element img=doc.selectFirst("meta[property=og:image],meta[name=og:image]");
         if(img!=null&&img.hasAttr("content")){
-            String poster=img.attr("content");if(poster.startsWith("https://"))item.poster=poster;
+            String poster=doc.location().isEmpty()?img.attr("content"):img.absUrl("content");if(ImageUrlPolicy.allowedFor(url,poster))item.poster=poster;
         }
         Element desc=doc.selectFirst("meta[name=description]");
         if(desc!=null)item.description=desc.attr("content");
-        // Do not guess video URLs, bypass access controls, or claim playback from page metadata.
-        item.playbackError="منبع پخش عمومی معتبر برای این عنوان تأیید نشده است.";
+        if(item.poster.isEmpty()){
+            Element video=doc.selectFirst("video[poster]");
+            if(video!=null&&ImageUrlPolicy.allowedFor(url,video.absUrl("poster")))item.poster=video.absUrl("poster");
+        }
+        if("series".equals(kind)){
+            Set<String> seen=new HashSet<>();
+            for(Element a:doc.select("a[href*=/episodes/]")){
+                String target=safeUrl(a.absUrl("href"));
+                if(target.isEmpty()||!sameSeries(url,target)||!seen.add(target))continue;
+                Element row=a.closest("li");Element number=row==null?null:row.selectFirst("[id^=divEpiNo]");
+                String label=number==null?a.text().trim():"قسمت "+number.text().trim();
+                if(label.isEmpty())label="قسمت "+(item.episodes.size()+1);
+                FarsiPlexTitle ep=new FarsiPlexTitle(target,"episode",label);
+                Element art=row==null?a.selectFirst("img"):row.selectFirst("img");
+                if(art!=null&&ImageUrlPolicy.allowedFor(target,art.absUrl("src")))ep.poster=art.absUrl("src");
+                if(ep.poster.isEmpty())ep.poster=item.poster;
+                item.episodes.add(ep);if(item.episodes.size()>=250)break;
+            }
+        }
+        // Direct media is only a candidate until the repository probes its bytes.
+        item.publicStream=publishedMedia(doc,url);
+        item.playbackError=item.publicStream.isEmpty()?"منبع پخش عمومی معتبر برای این عنوان تأیید نشده است؛ امکان نیاز به دسترسی رسمی یا تغییر ساختار سایت وجود دارد.":"";
         return item;
     }
 }

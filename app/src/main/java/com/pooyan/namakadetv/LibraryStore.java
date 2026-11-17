@@ -26,6 +26,8 @@ public final class LibraryStore {
         preferences = c.getSharedPreferences("namakade_local_library", Context.MODE_PRIVATE);
     }
 
+    LibraryStore(SharedPreferences preferences){this.preferences=preferences;}
+
     private List<Entry> read(String key) {
         List<Entry> out = new ArrayList<>();
         try {
@@ -60,7 +62,7 @@ public final class LibraryStore {
 
     private void upsert(String key, Entry e, int limit) {
         List<Entry> list = read(key);
-        list.removeIf(item -> item.url.equals(e.url));
+        list.removeIf(item -> "resume".equals(key) ? PlaybackResumePolicy.identity(item.url,item.pageUrl).equals(PlaybackResumePolicy.identity(e.url,e.pageUrl)) : item.url.equals(e.url));
         list.add(0, e);
         write(key, list, limit);
     }
@@ -94,16 +96,24 @@ public final class LibraryStore {
         for (Entry e : bookmarks()) if (e.url.equals(url)) return true;
         return false;
     }
-    public long getResumePosition(String videoUrl) {
-        for (Entry e : resumeList()) if (e.url.equals(videoUrl)) return e.positionMs;
+    public long getResumePosition(String videoUrl) {return getResumePosition(videoUrl,"");}
+    public long getResumePosition(String videoUrl,String pageUrl) {
+        String id=PlaybackResumePolicy.identity(videoUrl,pageUrl);
+        for(Entry e:resumeList())if(PlaybackResumePolicy.identity(e.url,e.pageUrl).equals(id))return e.positionMs;
         return 0;
     }
-    public void savePlayback(String title, String streamUrl, String pageUrl, long position, long duration) {
-        if (!StreamDetector.isHttpsUrl(streamUrl)) return;
-        long saved = position;
-        if (duration > 0 && (position >= duration - 30000 || position >= duration * 0.97)) saved = 0;
-        upsert("resume", new Entry(title, streamUrl, pageUrl,
-                saved, duration, System.currentTimeMillis()), 40);
+    public void removePlayback(String stream,String page){
+        String id=PlaybackResumePolicy.identity(stream,page);
+        List<Entry> entries=read("resume");
+        entries.removeIf(e->PlaybackResumePolicy.identity(e.url,e.pageUrl).equals(id));
+        write("resume",entries,40);
+    }
+    public void savePlayback(String title,String streamUrl,String pageUrl,long position,long duration){
+        if(!StreamDetector.isHttpsUrl(streamUrl))return;
+        if(position<=0||PlaybackResumePolicy.completed(position,duration)){removePlayback(streamUrl,pageUrl);return;}
+        String poster="";
+        for(Entry e:recentPages())if(e.url.equals(pageUrl)){poster=e.posterUrl;break;}
+        upsert("resume",new Entry(title,streamUrl,pageUrl,Math.max(0,position),Math.max(0,duration),System.currentTimeMillis(),poster),40);
     }
     public void clear() {
         preferences.edit().clear().apply();

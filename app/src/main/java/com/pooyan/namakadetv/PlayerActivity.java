@@ -17,6 +17,8 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.SeekBar;
+import android.content.res.ColorStateList;
 
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
@@ -58,7 +60,12 @@ public final class PlayerActivity extends Activity {
     private DefaultTrackSelector trackSelector;
     private PlayerView playerView;
     private FrameLayout root;
-    private LinearLayout controls, topPanel;
+    private LinearLayout controls, topPanel,timelinePanel;
+    private SeekBar seekBar;
+    private TextView timelineText;
+    private boolean scrubbing,resumePrompt;
+    private int revealKey=-1;
+    private final Runnable timelineTick=new Runnable(){public void run(){updateTimeline();handler.postDelayed(this,500);}};
     private TextView titleView, stateView, playButton;
     private String streamUrl, pageUrl, name, userAgent, subtitleUrl;
     private float speed = 1f;
@@ -68,7 +75,8 @@ public final class PlayerActivity extends Activity {
     private boolean resumePlayWhenReady = true;
 
     private final Runnable hideControls = () -> {
-        if (controls != null) controls.setVisibility(View.GONE);
+        if(player==null||!player.isPlaying()||scrubbing)return;
+        if (timelinePanel != null) timelinePanel.setVisibility(View.GONE);
         if (topPanel != null) topPanel.setVisibility(View.GONE);
         if (playerView != null) { playerView.setFocusable(true); playerView.requestFocus(); }
     };
@@ -88,9 +96,22 @@ public final class PlayerActivity extends Activity {
             finish(); return;
         }
         library = new LibraryStore(this);
-        pendingPosition = library.getResumePosition(streamUrl);
+        pendingPosition = state==null?library.getResumePosition(streamUrl,pageUrl):state.getLong("position",0);
+        if(state!=null)resumePlayWhenReady=state.getBoolean("playing",true);
+        resumePrompt=state==null&&pendingPosition>0;
+        if(resumePrompt)resumePlayWhenReady=false;
         initLayout();
         initPlayer();
+        if(resumePrompt)new AlertDialog.Builder(this).setTitle("ادامهٔ تماشا")
+            .setMessage("ادامه از "+PlaybackResumePolicy.time(pendingPosition)+" یا تماشا از ابتدا؟")
+            .setPositiveButton("ادامه",(d,w)->startChoice(false))
+            .setNegativeButton("از ابتدا",(d,w)->startChoice(true))
+            .setOnCancelListener(d->finish()).show();
+    }
+    private void startChoice(boolean restart){
+        resumePrompt=false;resumePlayWhenReady=true;
+        if(restart){pendingPosition=0;library.removePlayback(streamUrl,pageUrl);if(player!=null)player.seekTo(0);}
+        if(player!=null)player.play();revealControls();
     }
 
     private int dp(float value) { return TvUi.dp(this, value); }
@@ -136,7 +157,29 @@ public final class PlayerActivity extends Activity {
         scroller.addView(controls);
         FrameLayout.LayoutParams barLp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         barLp.setMargins(dp(25), 0, dp(25), dp(25));
-        root.addView(scroller, barLp);
+        timelinePanel=new LinearLayout(this);timelinePanel.setOrientation(LinearLayout.VERTICAL);
+        timelinePanel.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        timelinePanel.setPadding(dp(16),dp(10),dp(16),dp(8));
+        timelinePanel.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xB308080B,0xFA08080B}));
+        timelineText=TvUi.text(this,"00:00 / --:--    باقی‌مانده: --:--",14,Color.WHITE,false);
+        timelineText.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);timelinePanel.addView(timelineText);
+        seekBar=new SeekBar(this);seekBar.setMax(10000);seekBar.setKeyProgressIncrement(100);
+        seekBar.setProgressTintList(ColorStateList.valueOf(0xFFE50914));seekBar.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
+        seekBar.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF55555C));
+        seekBar.setContentDescription("زمان پخش؛ چپ و راست برای جابه‌جایی ده ثانیه");
+        timelinePanel.addView(seekBar,new LinearLayout.LayoutParams(-1,dp(42)));
+        seekBar.setOnKeyListener((v,k,e)->{
+            if(k==KeyEvent.KEYCODE_DPAD_LEFT||k==KeyEvent.KEYCODE_DPAD_RIGHT){if(e.getAction()==KeyEvent.ACTION_DOWN){seekBy(k==KeyEvent.KEYCODE_DPAD_LEFT?-10000:10000);revealControls();}return true;}
+            if(k==KeyEvent.KEYCODE_DPAD_DOWN){if(e.getAction()==KeyEvent.ACTION_DOWN)playButton.requestFocus();return true;}
+            if(k==KeyEvent.KEYCODE_DPAD_CENTER||k==KeyEvent.KEYCODE_ENTER){if(e.getAction()==KeyEvent.ACTION_UP)togglePlayback();return true;}
+            return false;
+        });
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onProgressChanged(SeekBar b,int value,boolean user){if(user&&player!=null&&canSeek()){player.seekTo((long)(player.getDuration()*(value/10000d)));updateTimeline();}}
+            public void onStartTrackingTouch(SeekBar b){scrubbing=true;handler.removeCallbacks(hideControls);}
+            public void onStopTrackingTouch(SeekBar b){scrubbing=false;saveProgress();revealControls();}
+        });
+        timelinePanel.addView(scroller);root.addView(timelinePanel,barLp);
 
         addControl("✕ برگشت", this::finish);
         playButton = addControl("Ⅱ مکث", this::togglePlayback);
@@ -153,6 +196,17 @@ public final class PlayerActivity extends Activity {
                     : AspectRatioFrameLayout.RESIZE_MODE_FIT);
             toast(zoomMode ? "بزرگنمایی (ممکن است تصویر برش بخورد)" : "نمایش کامل تصویر");
         });
+        for(int i=0;i<controls.getChildCount();i++){
+            final View v=controls.getChildAt(i);
+            v.setOnKeyListener((view,key,event)->{
+                if(TvUi.activate(view,key,event))return true;
+                if(event.getAction()==KeyEvent.ACTION_DOWN){
+                    revealControls();
+                    if(key==KeyEvent.KEYCODE_DPAD_UP){if(seekBar.isEnabled())seekBar.requestFocus();return true;}
+                    if(key==KeyEvent.KEYCODE_DPAD_DOWN)return true;
+                }return false;
+            });
+        }
         controls.getChildAt(1).requestFocus();
     }
     private TextView addControl(String label, Runnable run) {
@@ -187,6 +241,7 @@ public final class PlayerActivity extends Activity {
         playerView.setPlayer(player);
         player.setMediaItem(mediaItem());
         player.addListener(new Player.Listener() {
+            @Override public void onEvents(Player p,Player.Events events){updateTimeline();}
             @Override public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_BUFFERING) stateView.setText("در حال بارگذاری ویدئو…");
                 else if (state == Player.STATE_READY) stateView.setText("پخش آماده است · جهت چپ/راست: جابه‌جایی ۱۰ ثانیه");
@@ -218,6 +273,7 @@ public final class PlayerActivity extends Activity {
         player.setPlayWhenReady(resumePlayWhenReady);
         handler.removeCallbacks(progressSaver);
         handler.postDelayed(progressSaver, 12000);
+        handler.removeCallbacks(timelineTick);handler.post(timelineTick);
         revealControls();
     }
     private MediaItem mediaItem() {
@@ -235,15 +291,23 @@ public final class PlayerActivity extends Activity {
     }
     private void togglePlayback() {
         if (player == null) return;
-        if (player.isPlaying()) player.pause(); else player.play();
+        if (player.getPlayWhenReady()) player.pause(); else player.play();
     }
-    private void seekBy(long deltaMs) {
-        if (player == null) return;
-        long next = Math.max(0, player.getCurrentPosition() + deltaMs);
-        long duration = player.getDuration();
-        if (duration > 0 && duration != C.TIME_UNSET) next = Math.min(next, duration);
-        player.seekTo(next);
-        stateView.setText((next / 60000) + ":" + String.format(Locale.US,"%02d",(next/1000)%60));
+    private boolean canSeek(){return player!=null&&PlaybackResumePolicy.canSeek(player.getDuration(),player.isCurrentMediaItemLive(),player.isCurrentMediaItemSeekable());}
+    private void updateTimeline(){
+        if(player==null||seekBar==null)return;
+        long position=Math.max(0,player.getCurrentPosition()),duration=player.getDuration();
+        boolean finite=duration>0&&duration!=C.TIME_UNSET&&!player.isCurrentMediaItemLive();
+        timelineText.setText(PlaybackResumePolicy.time(position)+" / "+(finite?PlaybackResumePolicy.time(duration):player.isCurrentMediaItemLive()?"زنده":"--:--")+"    باقی‌مانده: "+(finite?PlaybackResumePolicy.time(Math.max(0,duration-position)):"--:--"));
+        boolean enabled=canSeek();
+        if(!enabled&&seekBar.isFocused())playButton.requestFocus();
+        seekBar.setEnabled(enabled);seekBar.setFocusable(enabled);
+        if(!scrubbing)seekBar.setProgress(finite?(int)Math.min(10000,10000d*position/duration):0);
+    }
+    private void seekBy(long deltaMs){
+        if(!canSeek())return;
+        player.seekTo(PlaybackResumePolicy.seek(player.getCurrentPosition(),deltaMs,player.getDuration()));
+        updateTimeline();saveProgress();
     }
     private void chooseSpeed() {
         final float[] speeds = {0.75f, 1f, 1.25f, 1.5f, 2f};
@@ -332,23 +396,31 @@ public final class PlayerActivity extends Activity {
     }
     private void revealControls() {
         if (controls == null) return;
-        controls.setVisibility(View.VISIBLE);
+        timelinePanel.setVisibility(View.VISIBLE);
         if (topPanel != null) topPanel.setVisibility(View.VISIBLE);
         handler.removeCallbacks(hideControls);
         handler.postDelayed(hideControls, 9000);
     }
     private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); }
     private void saveProgress() {
-        if (library == null || player == null) return;
+        if (library == null || player == null || resumePrompt || player.isCurrentMediaItemLive()) return;
         long duration = player.getDuration();
         long position = player.getCurrentPosition();
+        if(player.getPlaybackState()==Player.STATE_ENDED){library.removePlayback(streamUrl,pageUrl);return;}
         library.savePlayback(name, streamUrl, pageUrl, Math.max(0, position),
                 duration > 0 && duration != C.TIME_UNSET ? duration : 0);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
+        if(e.getAction()==KeyEvent.ACTION_UP&&(e.getKeyCode()==revealKey||e.getKeyCode()==KeyEvent.KEYCODE_BACK)){revealKey=-1;return true;}
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             int key = e.getKeyCode();
+            if(key==KeyEvent.KEYCODE_BACK){
+                if(timelinePanel!=null&&timelinePanel.isShown()&&player!=null&&player.isPlaying()){
+                    handler.removeCallbacks(hideControls);hideControls.run();return true;
+                }
+                finish();return true;
+            }
             if (key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || key == KeyEvent.KEYCODE_MEDIA_PLAY ||
                     key == KeyEvent.KEYCODE_MEDIA_PAUSE || key == KeyEvent.KEYCODE_SPACE) {
                 if (e.getRepeatCount() == 0 && player != null) {
@@ -377,11 +449,11 @@ public final class PlayerActivity extends Activity {
             if (controls != null && !controls.isShown()) {
                 if (key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     seekBy(key == KeyEvent.KEYCODE_DPAD_LEFT ? -10000 : 10000);
-                    return true;
+                    revealControls();seekBar.requestFocus();return true;
                 }
                 if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER ||
                         key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    revealControls(); controls.getChildAt(1).requestFocus(); return true;
+                    revealKey=key;revealControls(); controls.getChildAt(1).requestFocus(); return true;
                 }
             }
         }
@@ -397,6 +469,7 @@ public final class PlayerActivity extends Activity {
     }
     @Override protected void onStop() {
         handler.removeCallbacks(progressSaver);
+        handler.removeCallbacks(timelineTick);
         handler.removeCallbacks(hideControls);
         if (player != null) {
             resumePlayWhenReady = player.getPlayWhenReady();
@@ -411,6 +484,11 @@ public final class PlayerActivity extends Activity {
         if (playerView != null) playerView.setPlayer(null);
         trackSelector = null;
         super.onStop();
+    }
+    @Override protected void onSaveInstanceState(Bundle state){
+        super.onSaveInstanceState(state);
+        state.putLong("position",player==null?Math.max(0,pendingPosition):player.getCurrentPosition());
+        state.putBoolean("playing",player==null?resumePlayWhenReady:player.getPlayWhenReady());
     }
     @Override protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
