@@ -87,6 +87,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -100,13 +103,17 @@ jobs:
           profile: tv_1080p
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: gradle --no-daemon connectedDebugAndroidTest
+          script: |
+            gradle --no-daemon connectedDebugAndroidTest
+            mkdir -p app/build/reports/emulator-images
+            adb pull /sdcard/Android/data/com.pooyan.namakadetv.preview060/files/emulator-home.png app/build/reports/emulator-images/home.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Pooyan-TV-v0.6.0-Emulator-Reports
           path: |
             app/build/reports/androidTests/**
+            app/build/reports/emulator-images/**
             app/build/outputs/androidTest-results/**
           if-no-files-found: ignore
   publish:

@@ -49,4 +49,13 @@ public class TvPremiumInstrumentedTest {
  @Test public void historyPersistenceAndConfirmedRemovalArePerItem(){
   LibraryStore library=new LibraryStore(context());library.savePlayback("One","https://example.invalid/history.mp4","https://farsiplex.com/movie/history/",20000,100000);assertEquals(20000,new LibraryStore(context()).getResumePosition("","https://farsiplex.com/movie/history/"));library.forget("https://farsiplex.com/movie/history/","https://example.invalid/history.mp4");assertEquals(0,new LibraryStore(context()).getResumePosition("","https://farsiplex.com/movie/history/"));
  }
+ @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();Thread.sleep(2500);
+   scenario.onActivity(a->{assertFalse(a.isFinishing());FrameLayout root=(FrameLayout)field(a,"root");assertNotNull(root.findViewWithTag("home-primary"));});
+   android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);
+   java.io.File directory=context().getExternalFilesDir(null);assertNotNull(directory);
+   try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(directory,"emulator-home.png"))){assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}image.recycle();
+  }
+ }
 }
