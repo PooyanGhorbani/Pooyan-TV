@@ -256,8 +256,9 @@ public final class PlayerActivity extends Activity {
         // Only send the page's ORIGIN as Referer; never transmit its private query token.
         // Deliberately omit browser Cookies, which might leak on cross-host redirects.
         Map<String, String> headers = new LinkedHashMap<>();
-        if (StreamDetector.isHttpsUrl(pageUrl)) {
-            Uri p = Uri.parse(pageUrl);
+        String reference=currentCandidate!=null&&StreamDetector.isHttpsUrl(currentCandidate.page)?currentCandidate.page:pageUrl;
+        if (StreamDetector.isHttpsUrl(reference)) {
+            Uri p = Uri.parse(reference);
             String origin = p.getScheme() + "://" + p.getEncodedAuthority() + "/";
             headers.put("Referer", origin);
         }
@@ -448,6 +449,7 @@ public final class PlayerActivity extends Activity {
         long duration = player.getDuration();
         long position = player.getCurrentPosition();
         if(player.getPlaybackState()==Player.STATE_ENDED){library.complete(name,streamUrl,pageUrl,duration>0?duration:0);return;}
+        if(position<=0&&player.getPlaybackState()==Player.STATE_READY){library.removePlayback(streamUrl,pageUrl);return;}
         library.savePlayback(name, streamUrl, pageUrl, Math.max(0, position),
                 duration > 0 && duration != C.TIME_UNSET ? duration : 0);
     }

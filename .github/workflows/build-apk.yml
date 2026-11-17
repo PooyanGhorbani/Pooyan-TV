@@ -105,6 +105,13 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             gradle --no-daemon connectedDebugAndroidTest
+            adb shell am start -W -n com.pooyan.namakadetv.preview060/com.pooyan.namakadetv.MainActivity
+            adb shell am force-stop com.pooyan.namakadetv.preview060
+            adb shell am start -W -n com.pooyan.namakadetv.preview060/com.pooyan.namakadetv.MainActivity
+            sleep 3
+            adb shell uiautomator dump /sdcard/pooyan-restart.xml
+            adb pull /sdcard/pooyan-restart.xml app/build/reports/pooyan-restart.xml
+            grep -q '00:15' app/build/reports/pooyan-restart.xml
             mkdir -p app/build/reports/emulator-images
             adb pull /sdcard/Android/data/com.pooyan.namakadetv.preview060/files/emulator-home.png app/build/reports/emulator-images/home.png
       - uses: actions/upload-artifact@v4
@@ -114,6 +121,7 @@ jobs:
           path: |
             app/build/reports/androidTests/**
             app/build/reports/emulator-images/**
+            app/build/reports/pooyan-restart.xml
             app/build/outputs/androidTest-results/**
           if-no-files-found: ignore
   publish:

@@ -307,7 +307,8 @@ public final class MainActivity extends Activity {
         TextView name=text(item.name,14,WHITE,true);name.setSingleLine(true);name.setEllipsize(TextUtils.TruncateAt.END);
         cell.addView(name,lp(-1,27));
         boolean playable=streams.get("farsiplex:"+item.url)!=null;
-        cell.addView(text(playable?"▶  آمادهٔ تماشا":(item.year.isEmpty()?"کشف بیشتر":item.year),11,playable?0xFFFF7474:MUTED,false),lp(-1,24));
+        String badge=("movie".equals(item.kind)?"فیلم":"episode".equals(item.kind)?"قسمت":"سریال")+(item.year.isEmpty()?"":" · "+item.year);
+        cell.addView(text(playable?"لینک شخصی ذخیره شده · "+badge:badge,11,MUTED,false),lp(-1,24));
         cell.setOnFocusChangeListener((v,focused)->{
             cell.setBackground(shape(focused?0xFF492127:0xFF141419,10,focused));
             cell.animate().scaleX(focused?1.055f:1).scaleY(focused?1.055f:1).setDuration(100).start();
@@ -643,7 +644,7 @@ public final class MainActivity extends Activity {
                 FarsiPlexTitle item=new FarsiPlexTitle(url,kind,j.optString("title"));
                 String poster=j.optString("poster","");
                 if(ImageUrlPolicy.allowed(poster))item.poster=poster;
-                item.genre=j.optString("genre","");
+                item.genre=j.optString("genre","");item.year=j.optString("year","");
                 result.add(item);
             }
         }catch(Exception ignored){}
@@ -656,7 +657,7 @@ public final class MainActivity extends Activity {
         JSONArray json=new JSONArray();
         try{for(int i=0;i<Math.min(f.size(),100);i++){
             FarsiPlexTitle t=f.get(i);JSONObject value=new JSONObject();
-            value.put("url",t.url);value.put("title",t.name);value.put("poster",t.poster);value.put("kind",t.kind);value.put("genre",t.genre);json.put(value);
+            value.put("url",t.url);value.put("title",t.name);value.put("poster",t.poster);value.put("kind",t.kind);value.put("genre",t.genre);value.put("year",t.year);json.put(value);
         }}catch(Exception ignored){}
         preferences.edit().putString("favorites",json.toString()).apply();
     }
