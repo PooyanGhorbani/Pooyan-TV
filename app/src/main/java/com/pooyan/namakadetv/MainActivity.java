@@ -47,7 +47,7 @@ public final class MainActivity extends Activity {
     private SharedPreferences preferences;
     private boolean destroyed;
     private int generation, detailRequest, page=1;
-    private LinearLayout continueSlot,detailControls,navigationBar,recommendSlot,favoriteSlot;
+    private LinearLayout continueSlot,detailControls,navigationBar,recommendSlot,favoriteSlot,movieSlot;
     private final java.util.concurrent.ExecutorService localIo=java.util.concurrent.Executors.newSingleThreadExecutor();
     private static final int VOICE=730,EXPORT=731,IMPORT=732;
     private boolean returnedFromPlayer;
@@ -178,6 +178,7 @@ public final class MainActivity extends Activity {
         continueSlot=vertical();content.addView(continueSlot,lp(-1,-2));
         addContinueWatching();
         title("تازه‌اضافه‌شده‌ها","");rail("movie");
+        movieSlot=vertical();content.addView(movieSlot,lp(-1,-2));
         favoriteSlot=vertical();content.addView(favoriteSlot,lp(-1,-2));
         recommendSlot=vertical();content.addView(recommendSlot,lp(-1,-2));
         refreshHomeExtras();
@@ -681,6 +682,7 @@ public final class MainActivity extends Activity {
         if(!"home".equals(screen)||favoriteSlot==null||recommendSlot==null)return;
         Object focus=getCurrentFocus()==null?null:getCurrentFocus().getTag();
         List<FarsiPlexTitle> favorites=favoriteItems(),catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
+        if(movieSlot!=null)homeRow(movieSlot,"فیلم‌ها","انتخاب‌های کاتالوگ موجود",loadedMovies);
         homeRow(favoriteSlot,"لیست من","ذخیره‌شده برای همین پروفایل",favorites);
         homeRow(recommendSlot,"پیشنهاد برای شما","بر اساس ژانر لیست من و تماشای اخیر؛ فقط روی این دستگاه",Recommendations.rank(catalog,favorites,new LibraryStore(this).watched()));
         if(focus!=null){View v=root.findViewWithTag(focus);if(v!=null)v.requestFocus();}

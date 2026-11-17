@@ -8,12 +8,13 @@ public final class CatalogMerge {
     private CatalogMerge(){}
     public static String matchKey(FarsiPlexTitle title){
         if(title==null)return "";
+        String scope=title.kind+("series".equals(title.kind)&&title.season>0?"|season:"+title.season:"");
         if("episode".equals(title.kind))return "episode|"+title.url;
-        if(!title.stableId.isEmpty())return title.kind+"|id:"+title.stableId;
+        if(!title.stableId.isEmpty())return scope+"|id:"+title.stableId;
         String name=SearchPolicy.normalize(title.name);
         // Unknown years cannot reliably distinguish remakes across catalogs.
-        if(title.year==null||!title.year.matches("(?:19|20)\\d{2}"))return title.kind+"|url:"+title.url;
-        return title.kind+"|"+name+"|"+title.year;
+        if(title.year==null||!title.year.matches("(?:19|20)\\d{2}"))return scope+"|url:"+title.url;
+        return scope+"|"+name+"|"+title.year;
     }
     public static List<FarsiPlexTitle> join(List<FarsiPlexTitle> primary,List<FarsiPlexTitle> secondary,
                                                  Map<String,List<FarsiPlexTitle>> variants){

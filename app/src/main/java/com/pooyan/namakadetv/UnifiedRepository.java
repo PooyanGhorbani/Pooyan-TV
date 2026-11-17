@@ -41,7 +41,6 @@ public final class UnifiedRepository {
   resolve(item,(value,error)->{
    if(closed||done[0])return;result[0]=value==null?item:value;addCandidate(result[0],result[0]);
    List<FarsiPlexTitle> options=variants.get(item.url);
-   if(!result[0].publicStream.isEmpty()||"series".equals(item.kind))cb.receive(result[0],null);
    if("series".equals(item.kind)||options==null||options.isEmpty()){done[0]=true;cb.receive(result[0],result[0].publicStream.isEmpty()?error:null);return;}
    collect(result[0],options,0,done,cb);
   });
@@ -54,7 +53,7 @@ public final class UnifiedRepository {
  }
  private void collect(FarsiPlexTitle owner,List<FarsiPlexTitle> options,int n,boolean[] done,FarsiPlexRepository.DetailResult cb){
   if(done[0]||closed)return;if(n>=Math.min(options.size(),2)){done[0]=true;cb.receive(owner,null);return;}
-  resolve(options.get(n),(value,error)->{if(done[0]||closed)return;addCandidate(owner,value);if(owner.poster.isEmpty()&&value!=null)owner.poster=value.poster;if(!owner.publicStream.isEmpty()){owner.playbackError="";cb.receive(owner,null);}collect(owner,options,n+1,done,cb);});
+  resolve(options.get(n),(value,error)->{if(done[0]||closed)return;addCandidate(owner,value);if(owner.poster.isEmpty()&&value!=null)owner.poster=value.poster;if(!owner.publicStream.isEmpty())owner.playbackError="";collect(owner,options,n+1,done,cb);});
  }
  public void close(){closed=true;handler.removeCallbacksAndMessages(null);main.close();alternate.close();cache.clear();}
 }

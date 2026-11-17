@@ -65,7 +65,7 @@ public final class PlayerActivity extends Activity {
     private List<PlaybackCandidate> candidates=new ArrayList<>();
     private final SourceHealth.Session failoverSession=new SourceHealth.Session();
     private PlaybackCandidate currentCandidate;private boolean switching,stopping,nextOffered,nextLoading;
-    private long compatibleDuration;
+    private long compatibleDuration;private int playbackGeneration;
     private DefaultHttpDataSource.Factory httpFactory;
     private SubtitleView captions;private final CueDelayQueue<List<Cue>> cueQueue=new CueDelayQueue<>();
     private final Runnable cueTicker=new Runnable(){public void run(){if(player!=null){List<Cue> cues=cueQueue.poll(player.getCurrentPosition());if(cues!=null)captions.setCues(cues);}handler.postDelayed(this,100);}};
@@ -397,6 +397,8 @@ public final class PlayerActivity extends Activity {
                         Format selected=choice.group.getTrackFormat(choice.index);
                         if(type==C.TRACK_TYPE_TEXT)profilePrefs.edit().putBoolean("subtitle_off",false).putString("text",selected.language==null?"fa":selected.language).apply();
                         if(type==C.TRACK_TYPE_AUDIO&&selected.language!=null)profilePrefs.edit().putString("audio",selected.language).apply();
+                        if(type==C.TRACK_TYPE_AUDIO&&selected.language!=null)builder.setPreferredAudioLanguage(selected.language);
+                        if(type==C.TRACK_TYPE_TEXT&&selected.language!=null)builder.setPreferredTextLanguage(selected.language);
                         builder.setTrackTypeDisabled(type, false)
                                 .setOverrideForType(new TrackSelectionOverride(
                                         choice.group.getMediaTrackGroup(), choice.index));
@@ -508,7 +510,7 @@ public final class PlayerActivity extends Activity {
         }
     }
     @Override protected void onStop() {
-        stopping=true;cancelNext();handler.removeCallbacks(cueTicker);cueQueue.clear();
+        stopping=true;playbackGeneration++;switching=false;nextLoading=false;cancelNext();handler.removeCallbacks(cueTicker);cueQueue.clear();
         handler.removeCallbacks(progressSaver);
         handler.removeCallbacks(timelineTick);
         handler.removeCallbacks(hideControls);
@@ -536,10 +538,11 @@ public final class PlayerActivity extends Activity {
         boolean playing=player!=null?player.getPlayWhenReady():resumePlayWhenReady;
         PlaybackCandidate next=failoverSession.next(candidates,System.currentTimeMillis());
         if(next==null){exhausted(reason);return;}
+        final int generation=playbackGeneration;
         switching=true;stateView.setText("در حال بررسی منبع جایگزین…");
-        handler.postDelayed(()->{if(stopping||isFinishing()){switching=false;return;}verifier.execute(()->{
+        handler.postDelayed(()->{if(generation!=playbackGeneration)return;if(stopping||isFinishing()){switching=false;return;}verifier.execute(()->{
             MediaProbe.Result probe=MediaProbe.inspect(next.url);
-            runOnUiThread(()->{switching=false;if(stopping||isFinishing())return;
+            runOnUiThread(()->{if(generation!=playbackGeneration)return;switching=false;if(stopping||isFinishing())return;
                 if(!probe.valid){currentCandidate=next;failover(probe.failure);return;}
                 currentCandidate=next;streamUrl=next.url;pendingPosition=position;resumePlayWhenReady=playing;
                 if(player==null){initPlayer();return;}
