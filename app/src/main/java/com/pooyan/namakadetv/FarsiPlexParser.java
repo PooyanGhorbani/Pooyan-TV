@@ -79,6 +79,8 @@ public final class FarsiPlexParser {
                 String target=FarsiPlexUrlPolicy.normalize(trusted,a.attr("href"));
                 if(!"episode".equals(FarsiPlexUrlPolicy.mediaType(target))||!seen.add(target))continue;
                 String label=a.text().trim();
+                Element episodeRow=a.closest("li");
+                if(episodeRow!=null){Element number=episodeRow.selectFirst(".numerando"); if(number!=null)label=number.text()+" · "+label;}
                 if(label.isEmpty()||label.equalsIgnoreCase("Image"))label="قسمت "+(t.episodes.size()+1);
                 FarsiPlexTitle ep=new FarsiPlexTitle(target,"episode",label);
                 Element img=a.selectFirst("img");if(img!=null)ep.poster=imageUrl(trusted,img);
@@ -116,3 +118,4 @@ public final class FarsiPlexParser {
     }
     private static String truncate(String s,int max){return s==null?"":s.trim().substring(0,Math.min(max,s.trim().length()));}
 }
+
