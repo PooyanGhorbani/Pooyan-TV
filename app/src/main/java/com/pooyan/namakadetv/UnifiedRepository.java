@@ -2,7 +2,16 @@ package com.pooyan.namakadetv;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Locale;
 /** Partial-result aggregation with bounded caches and conservative per-title candidate resolution. */
 public final class UnifiedRepository {
  private boolean closed;private int searchGeneration;private final Handler handler=new Handler(Looper.getMainLooper());

@@ -218,6 +218,7 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams params=lp(260,114);params.rightMargin=dp(14);row.addView(tile,params);
             if(++count==12)break;
         }
+        if(count==0){continueSlot.addView(text("ادامهٔ تماشا",23,WHITE,true),lp(-1,50));continueSlot.addView(text("پس از تماشای یک عنوان، پیشرفت آن اینجا نمایش داده می‌شود.",14,MUTED,false),lp(-1,45));}
         if(count>0){
             TextView heading=text("ادامهٔ تماشا",23,WHITE,true);heading.setPadding(0,dp(18),0,dp(8));
             continueSlot.addView(heading,lp(-1,60));continueSlot.addView(slider,lp(-1,130));
@@ -672,9 +673,10 @@ public final class MainActivity extends Activity {
     }
 
     private void homeRow(LinearLayout slot,String heading,String note,List<FarsiPlexTitle> titles){
-        slot.removeAllViews();if(titles.isEmpty())return;
+        slot.removeAllViews();
         TextView name=text(heading,23,WHITE,true);name.setPadding(0,dp(15),0,dp(5));slot.addView(name,lp(-1,55));
         if(!note.isEmpty())slot.addView(text(note,12,MUTED,false),lp(-1,30));
+        if(titles.isEmpty()){slot.addView(text("هنوز عنوانی در این بخش نیست؛ فهرست‌ها یا لیست من را بررسی کنید.",14,MUTED,false),lp(-1,55));return;}
         HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);LinearLayout row=horizontal();row.setGravity(Gravity.TOP);slider.addView(row);
         for(int i=0;i<Math.min(12,titles.size());i++)card(row,titles.get(i));slot.addView(slider,lp(-1,320));
     }

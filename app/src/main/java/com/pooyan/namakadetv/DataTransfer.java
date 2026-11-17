@@ -1,5 +1,6 @@
 package com.pooyan.namakadetv;
-import org.json.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import android.content.SharedPreferences;
 /** Explicit schema-limited profile import/export. No media tokens, credentials or private app access. */
 public final class DataTransfer {

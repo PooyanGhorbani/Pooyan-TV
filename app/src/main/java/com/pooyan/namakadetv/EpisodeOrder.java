@@ -1,6 +1,16 @@
 package com.pooyan.namakadetv;
-import java.util.*;
-import org.json.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Locale;
+import org.json.JSONArray;
+import org.json.JSONObject;
 /** Never infer episode identity from a fuzzy movie title or guess across missing seasons. */
 public final class EpisodeOrder {
  public static FarsiPlexTitle next(List<FarsiPlexTitle> episodes,String page){FarsiPlexTitle current=null;for(FarsiPlexTitle e:episodes)if(e.url.equals(page))current=e;if(current==null||current.season<1||current.episode<1)return null;FarsiPlexTitle result=null;for(FarsiPlexTitle e:episodes)if(e.season==current.season&&e.episode==current.episode+1){if(result!=null&&!result.url.equals(e.url))return null;result=e;}return result;}
