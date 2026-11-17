@@ -34,8 +34,8 @@ assert 'source.list(' in main and 'source.detail(' in main
 assert 'TvPosterFocusPolicy' in main and 'requestFocus' in main
 assert 'publicStream' in main and 'PublicHtml5Media.find' in sources
 assert 'PlayerActivity.EXTRA_URL' in main
-assert "versionName '0.4.2'" in gradle
-assert "applicationIdSuffix '.preview042playbackr2'" in gradle
+assert "versionName '0.4.3'" in gradle
+assert "applicationIdSuffix '.preview043'" in gradle
 assert 'Cinemeta' not in main and 'namakade.com' not in main
 assert 'sk-proj-' not in sources and 'DEEPSEEK_API_KEY' not in sources
 assert 'AiResolverClient' in main and 'resolveWithAI' in main

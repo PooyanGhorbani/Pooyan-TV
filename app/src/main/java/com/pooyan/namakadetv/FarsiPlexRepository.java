@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** One public metadata source only; no authentication, bypasses, playback scraping or third-party sites. */
+/** One public metadata source only; no authentication bypasses or third-party catalog sources. */
 public final class FarsiPlexRepository {
     public interface Result { void receive(List<FarsiPlexTitle> values,String error); }
     public interface DetailResult { void receive(FarsiPlexTitle value,String error); }
@@ -57,8 +57,11 @@ public final class FarsiPlexRepository {
             try{
                 Document document=fetch(item.url);
                 res=FarsiPlexParser.details(document.outerHtml(),item.url,item.kind);
-                if(res.publicStream.isEmpty())res.publicStream=FarsiPlexPlayback.resolve(document);
                 if(!res.publicStream.isEmpty()&&!MediaProbe.valid(res.publicStream))res.publicStream="";
+                if(res.publicStream.isEmpty()&&!"series".equals(item.kind)){
+                    FarsiPlexPlayback.Result playback=FarsiPlexPlayback.resolveDetailed(document);
+                    res.publicStream=playback.media;res.playbackError=playback.error;
+                }
                 if(res.poster.isEmpty())res.poster=item.poster;
                 if(res.year.isEmpty())res.year=item.year;
             }catch(Exception e){error="دریافت جزئیات ممکن نشد: "+e.getMessage();}

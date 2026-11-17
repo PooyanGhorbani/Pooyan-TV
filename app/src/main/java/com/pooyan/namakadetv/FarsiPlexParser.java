@@ -76,13 +76,20 @@ public final class FarsiPlexParser {
         Element genre=d.selectFirst("a[href*=genres/]");if(genre!=null)t.genre=genre.text();
         if("series".equals(kind)) {
             Set<String> seen=new HashSet<>();
-            for(Element a:d.select("a[href]")) {
+            Element episodes=d.selectFirst("#seasons");
+            for(Element a:(episodes==null?d:episodes).select("a[href]")) {
                 String target=FarsiPlexUrlPolicy.normalize(trusted,a.attr("href"));
                 if(!"episode".equals(FarsiPlexUrlPolicy.mediaType(target))||!seen.add(target))continue;
                 String label=a.text().trim();
                 if(label.isEmpty()||label.equalsIgnoreCase("Image"))label="قسمت "+(t.episodes.size()+1);
                 FarsiPlexTitle ep=new FarsiPlexTitle(target,"episode",label);
-                Element img=a.selectFirst("img");if(img!=null)ep.poster=imageUrl(trusted,img);
+                Element img=a.selectFirst("img");
+                Element row=a.closest("li");
+                if(img==null&&row!=null)img=row.selectFirst("img");
+                if(img!=null)ep.poster=imageUrl(trusted,img);
+                if(ep.poster.isEmpty())ep.poster=t.poster;
+                Element number=row==null?null:row.selectFirst(".numerando");
+                if(number!=null&&!number.text().trim().isEmpty())ep.name=number.text().trim()+" · "+label;
                 t.episodes.add(ep);
                 if(t.episodes.size()>=250)break;
             }

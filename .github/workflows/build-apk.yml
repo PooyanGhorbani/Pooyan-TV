@@ -1,8 +1,8 @@
-name: Build Pooyan TV v0.4.2 DeepSeek Preview
+name: Build Pooyan TV v0.4.3 Native Playback Preview
 on:
   workflow_dispatch:
   push:
-    branches: [main, dev/v0.4.2-deepseek]
+    branches: [main, dev/v0.4.3-native-playback]
     paths:
       - 'app/**'
       - 'tests/**'
@@ -47,21 +47,24 @@ jobs:
             sleep 20
             gradle --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug
           }
+      - name: Live native public playback HTTP checks
+        run: POOYAN_LIVE_CHECK=1 gradle --no-daemon testDebugUnitTest --rerun-tasks
       - name: Upload reports even if checks fail
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-FarsiPlex-v0.4.2-reports
+          name: Pooyan-TV-FarsiPlex-v0.4.3-reports
           path: |
             app/build/reports/lint-results-debug.*
             app/build/reports/tests/**
             app/build/test-results/**
+            app/build/reports/live-playback.tsv
           if-no-files-found: ignore
           retention-days: 14
       - name: Upload preview APK
         uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-FarsiPlex-v0.4.2-Preview-APK
+          name: Pooyan-TV-FarsiPlex-v0.4.3-Preview-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -69,12 +72,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4.2-playback-r2.apk
-          gh release view v0.4.2 >/dev/null 2>&1 || gh release create v0.4.2 --target dev/v0.4.2-deepseek --prerelease --title 'Pooyan TV v0.4.2' --notes 'Native TV preview. DeepSeek requires configured Worker secrets. FarsiPlex streaming is not verified.'
-          if ! gh release view v0.4.2 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.4.2-playback-r2.apk; then
-            gh release upload v0.4.2 Pooyan-TV-v0.4.2-playback-r2.apk
+          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4.3-preview.apk
+          sha256sum Pooyan-TV-v0.4.3-preview.apk > SHA256SUMS-v0.4.3.txt
+          gh release view v0.4.3 >/dev/null 2>&1 || gh release create v0.4.3 --target dev/v0.4.3-native-playback --prerelease --title 'Pooyan TV v0.4.3' --notes 'Native FarsiPlex playback preview. See docs/V043_PLAYBACK_RESULTS_FA.md for actual results. No v0.4.3 device playback test; no TV installation performed.'
+          if ! gh release view v0.4.3 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.4.3-preview.apk; then
+            gh release upload v0.4.3 Pooyan-TV-v0.4.3-preview.apk
           fi
 
 
 
 
+
+          gh release upload v0.4.3 SHA256SUMS-v0.4.3.txt --clobber

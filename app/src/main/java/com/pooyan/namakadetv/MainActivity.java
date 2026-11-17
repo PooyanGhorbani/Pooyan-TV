@@ -286,6 +286,7 @@ public final class MainActivity extends Activity {
         return false;
     }
 
+    private String returnEpisodeUrl="";
     private View returnView,returnFocus;
     private LinearLayout returnContent;
     private TextView returnStatus;
@@ -325,7 +326,7 @@ public final class MainActivity extends Activity {
         if(url!=null && !url.isEmpty())controls.addView(button("▶  پخش",true,()->play(item.name,url)),lp(145,53));
         else controls.addView(button("+  افزودن لینک مجاز",true,()->addStream(item)),lp(206,53));
         if(url==null || url.isEmpty()){
-            TextView noMedia=text(complete?"در صفحهٔ عمومی این عنوان لینک مستقیم قابل‌پخش پیدا نشد؛ اتصال رسمی به منبع پخش هنوز فراهم نیست.":"در حال بررسی امکان پخش…",13,0xFFF2CA8F,false);
+            TextView noMedia=text(complete?("series".equals(item.kind)?"برای بررسی پخش، یک قسمت را انتخاب کنید.":item.playbackError.isEmpty()?"منبع عمومی قابل‌پخش تأیید نشد؛ بعداً دوباره تلاش کنید.":item.playbackError):"در حال بررسی امکان پخش…",13,0xFFF2CA8F,false);
             LinearLayout.LayoutParams nm=lp(-1,-2);nm.topMargin=dp(6);info.addView(noMedia,nm);
         }
         // AI search is opt-in and uses a separately deployed Worker. No API key in Android.
@@ -347,9 +348,10 @@ public final class MainActivity extends Activity {
                 String epKey="farsiplex:"+ep.url;
                 String stream=streams.get(epKey);
                 TextView b=button((stream==null?"+  ":"▶  ")+ep.name,false,()->{
-                    parentSeries=item;detail(ep);
+                    returnEpisodeUrl=ep.url;parentSeries=item;detail(ep);
                 });
                 LinearLayout.LayoutParams epLp=lp(-1,54);epLp.bottomMargin=dp(8);content.addView(b,epLp);
+                if(ep.url.equals(returnEpisodeUrl))b.requestFocus();
             }
         }
         info("FarsiPlex · "+item.url+" · "+(complete?"اطلاعات دریافت شد":"در حال دریافت جزئیات…"));
