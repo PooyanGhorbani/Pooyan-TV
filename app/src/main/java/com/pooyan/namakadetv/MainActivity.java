@@ -40,6 +40,7 @@ public final class MainActivity extends Activity {
     private FarsiPlexRepository source;
     private CatalogImages images;
     private LocalStreams streams;
+    private AiResolverClient aiResolver;
     private SharedPreferences preferences;
     private boolean destroyed;
     private int generation, page=1;
@@ -58,7 +59,7 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
         source=new FarsiPlexRepository(this);images=new CatalogImages(this);
-        streams=new LocalStreams(this);
+        streams=new LocalStreams(this);aiResolver=new AiResolverClient(this);
         preferences=getSharedPreferences("pooyan_farsiplex_v04",MODE_PRIVATE);
         home();
     }
@@ -96,6 +97,7 @@ public final class MainActivity extends Activity {
         navigation.addView(button("سریال‌ها",destination.equals("series"),()->browse("series")),lp(111,45));gap(navigation,9);
         navigation.addView(button("علاقه‌مندی",destination.equals("favorites"),this::favorites),lp(142,45));
         navigation.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
+        navigation.addView(button("⚙  AI",false,()->configureAI(null)),lp(95,45));gap(navigation,9);
         navigation.addView(button("⌕  جست‌وجو",destination.equals("search"),this::askSearch),lp(146,45));
         outer.addView(navigation,lp(-1,73));
         View divider=new View(this);divider.setBackgroundColor(0xFF243246);outer.addView(divider,lp(-1,1));
@@ -119,7 +121,7 @@ public final class MainActivity extends Activity {
         LinearLayout hero=vertical();hero.setPadding(dp(30),dp(24),dp(30),dp(23));
         GradientDrawable background=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{0xFF123F44,0xFF16233B,0xFF101620});
         background.setCornerRadius(dp(23));hero.setBackground(background);
-        hero.addView(text("POOYAN TV  ·  FARSiPLEX EDITION  ·  0.4",13,0xFF7FEEE1,true),lp(-1,27));
+        hero.addView(text("POOYAN TV  ·  FARSIPLEX EDITION  ·  0.4.2",13,0xFF7FEEE1,true),lp(-1,27));
         hero.addView(text("سینمای ایران، روی تلویزیون تو",32,WHITE,true),lp(-1,60));
         hero.addView(text("فیلم‌ها و سریال‌های FarsiPlex در رابط بومی تلویزیون؛ بدون WebView و بدون تبلیغات داخل برنامه.",16,0xFFCCDFE6,false),lp(-1,57));
         LinearLayout actions=horizontal();actions.addView(button("◈  تماشای فیلم‌ها",true,()->browse("movie")),lp(201,52));gap(actions,12);
@@ -130,13 +132,14 @@ public final class MainActivity extends Activity {
         rail("movie");
         title("تازه‌ترین سریال‌ها","فصل‌ها و قسمت‌ها پس از انتخاب عنوان دریافت می‌شوند");
         rail("series");
-        title("شفافیت پخش","دکمهٔ پخش تنها برای لینک مستقیم و مجازی که خودت به برنامه افزوده‌ای فعال می‌شود.");
-        TextView note=text("وب‌سایت FarsiPlex فعلاً API رسمی پخش قابل تأیید برای Pooyan TV ارائه نکرده است. این نسخه، نمونهٔ واقعی کاتالوگ بومی است؛ به‌جای پخش ساختگی، وضعیت هر عنوان را روشن نشان می‌دهد.",15,MUTED,false);
+        title("شفافیت پخش","لینک مستقیم شخصی یا لینک عمومی بررسی‌شده با موتور اختیاری DeepSeek.");
+        TextView note=text("وب‌سایت FarsiPlex فعلاً API رسمی پخش قابل تأیید برای Pooyan TV ارائه نکرده است. موتور DeepSeek اختیاری است و فقط منابع عمومی را جست‌وجو می‌کند؛ لینک‌هایی که پیدا نشوند همچنان قابل پخش نخواهند بود.",15,MUTED,false);
         content.addView(note,lp(-1,-2));
     }
     private void rail(String kind){
         HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
         LinearLayout row=horizontal();row.setGravity(Gravity.TOP);slider.addView(row);
+        slider.setFocusable(false);
         row.addView(text("در حال دریافت اطلاعات…",15,MUTED,false),lp(360,90));
         content.addView(slider,lp(-1,296));
         int token=generation;
@@ -195,7 +198,11 @@ public final class MainActivity extends Activity {
             }
             page=p+1;hasMore=!list.isEmpty()&&page<=10;
             nextPage.setText(hasMore?"نمایش عنوان‌های بیشتر":"پایان فهرست");
-            if(p>1&&firstRow!=null&&firstRow.getChildCount()>0)firstRow.getChildAt(0).requestFocus();
+            // Newly loaded posters are immediately navigable using the remote.
+            if(firstRow!=null&&firstRow.getChildCount()>0){
+                final View first=firstRow.getChildAt(0);
+                if(p==1 || nextPage.isFocused())first.post(first::requestFocus);
+            }
             info("FarsiPlex · "+seen.size()+" عنوان · قابل پخش بودن مستقل از کاتالوگ است");
         });
     }
@@ -212,12 +219,82 @@ public final class MainActivity extends Activity {
         cell.setOnFocusChangeListener((v,focused)->{
             cell.setBackground(shape(focused?0xFF17434B:0xFF111C2D,11,focused));
             cell.setScaleX(focused?1.04f:1);cell.setScaleY(focused?1.04f:1);
-            if(focused)cell.bringToFront();
+            // Never reorder poster siblings on focus: D-pad indices must remain stable.
         });
         cell.setOnClickListener(v->detail(item));
+        // Do not depend on Android's geometry-based focus search through nested
+        // ScrollViews: it often jumps from a poster to the top navigation bar.
+        cell.setOnKeyListener((v,key,event)->{
+            if(event.getAction()!=KeyEvent.ACTION_DOWN || event.getRepeatCount()>0)return false;
+            if(key==KeyEvent.KEYCODE_DPAD_LEFT || key==KeyEvent.KEYCODE_DPAD_RIGHT){
+                LinearLayout parent=(LinearLayout)v.getParent();
+                int next=TvPosterFocusPolicy.neighbor(parent.indexOfChild(v),parent.getChildCount(),key==KeyEvent.KEYCODE_DPAD_RIGHT);
+                if(next>=0&&next<parent.getChildCount())return focusPoster(parent.getChildAt(next));
+                return true; // Do not send focus to unrelated top-menu controls.
+            }
+            if(key==KeyEvent.KEYCODE_DPAD_UP || key==KeyEvent.KEYCODE_DPAD_DOWN){
+                return movePosterVertical(v,key==KeyEvent.KEYCODE_DPAD_DOWN);
+            }
+            return false;
+        });
         LinearLayout.LayoutParams p=lp(172,274);p.rightMargin=dp(13);row.addView(cell,p);
     }
+    /** Explicit TV focus traversal between poster rows, including lazy-loaded pages. */
+    private boolean focusPoster(View target){
+        if(target==null)return false;
+        if(!target.requestFocus())return false;
+        target.requestRectangleOnScreen(new android.graphics.Rect(0,0,target.getWidth(),target.getHeight()),false);
+        return true;
+    }
+    private boolean movePosterVertical(View poster,boolean down){
+        if(!(poster.getParent() instanceof LinearLayout))return false;
+        LinearLayout row=(LinearLayout)poster.getParent();
+        int column=row.indexOfChild(poster);
+        ViewGroup container=(ViewGroup)row.getParent();
+        // Home page: each strip is wrapped by its own HorizontalScrollView.
+        if(container instanceof HorizontalScrollView){
+            ViewGroup stripParent=(ViewGroup)container.getParent();
+            if(stripParent!=null){
+                int index=stripParent.indexOfChild(container);
+                int step=down?1:-1;
+                for(int i=index+step;i>=0&&i<stripParent.getChildCount();i+=step){
+                    View candidate=stripParent.getChildAt(i);
+                    if(!(candidate instanceof HorizontalScrollView))continue;
+                    View view=((HorizontalScrollView)candidate).getChildAt(0);
+                    if(view instanceof LinearLayout){
+                        LinearLayout other=(LinearLayout)view;
+                        if(other.getChildCount()>0 && other.getChildAt(0).isFocusable())
+                            return focusPoster(other.getChildAt(TvPosterFocusPolicy.column(column,other.getChildCount())));
+                    }
+                }
+            }
+            return false; // Let the framework reach the hero buttons/navigation.
+        }
+        // Browse/favorites/search: posters are direct children of consecutive rows.
+        int rowPosition=container.indexOfChild(row);
+        int direction=down?1:-1;
+        for(int i=rowPosition+direction;i>=0&&i<container.getChildCount();i+=direction){
+            View candidate=container.getChildAt(i);
+            if(!(candidate instanceof LinearLayout))continue;
+            LinearLayout other=(LinearLayout)candidate;
+            if(other.getChildCount()>0 && other.getChildAt(0).isFocusable()){
+                return focusPoster(other.getChildAt(TvPosterFocusPolicy.column(column,other.getChildCount())));
+            }
+        }
+        if(down && container==listingContainer && nextPage!=null && nextPage.isShown())
+            return nextPage.requestFocus();
+        return false;
+    }
+
+    private View returnView,returnFocus;
+    private LinearLayout returnContent;
+    private TextView returnStatus;
+    private String returnScreen;
     private void detail(FarsiPlexTitle item){
+        if(!"detail".equals(screen)){
+            returnView=root.getChildAt(0); returnFocus=getCurrentFocus();
+            returnContent=content; returnStatus=status; returnScreen=screen;
+        }
         selected=item;showDetail(item,false);
         int token=generation;
         source.detail(item,(full,error)->{
@@ -243,9 +320,18 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams rp=lp(-1,31);rp.topMargin=dp(14);info.addView(rights,rp);
         LinearLayout controls=horizontal();LinearLayout.LayoutParams cp=lp(-1,62);cp.topMargin=dp(8);info.addView(controls,cp);
         String key="farsiplex:"+item.url;
-        String url=streams.get(key);
-        if(url!=null)controls.addView(button("▶  پخش",true,()->play(item.name,url)),lp(145,53));
+        String custom=streams.get(key);
+        String url=custom!=null?custom:item.publicStream;
+        if(url!=null && !url.isEmpty())controls.addView(button("▶  پخش",true,()->play(item.name,url)),lp(145,53));
         else controls.addView(button("+  افزودن لینک مجاز",true,()->addStream(item)),lp(206,53));
+        if(url==null || url.isEmpty()){
+            TextView noMedia=text(complete?"در صفحهٔ عمومی این عنوان لینک مستقیم قابل‌پخش پیدا نشد؛ اتصال رسمی به منبع پخش هنوز فراهم نیست.":"در حال بررسی امکان پخش…",13,0xFFF2CA8F,false);
+            LinearLayout.LayoutParams nm=lp(-1,-2);nm.topMargin=dp(6);info.addView(noMedia,nm);
+        }
+        // AI search is opt-in and uses a separately deployed Worker. No API key in Android.
+        LinearLayout aiActions=horizontal();
+        LinearLayout.LayoutParams aiLayout=lp(-1,60);aiLayout.topMargin=dp(11);info.addView(aiActions,aiLayout);
+        aiActions.addView(button("✨  بررسی پخش با DeepSeek",false,()->resolveWithAI(item)),lp(280,50));
         gap(controls,9);
         controls.addView(button(isFavorite(item)?"♥ حذف علاقه‌مندی":"♡ علاقه‌مندی",false,()->{
             toggleFavorite(item);showDetail(item,complete);
@@ -272,7 +358,66 @@ public final class MainActivity extends Activity {
         if(selected!=null&&"episode".equals(selected.kind)&&parentSeries!=null){
             FarsiPlexTitle series=parentSeries;parentSeries=null;selected=series;showDetail(series,true);return;
         }
-        if("series".equals(section))browse("series");else browse("movie");
+        if(returnView!=null){
+            generation++;root.removeAllViews();root.addView(returnView);
+            screen=returnScreen;content=returnContent;status=returnStatus;
+            View target=returnFocus;returnView=null;
+            if(target!=null)target.post(()->focusPoster(target));
+        }else if("series".equals(section))browse("series");else browse("movie");
+    }
+    private void configureAI(Runnable afterSave){
+        LinearLayout fields=vertical();fields.setPadding(dp(17),dp(8),dp(17),dp(8));
+        TextView explanation=text("آدرس Worker خصوصی خودت را وارد کن. کلید DeepSeek فقط در Cloudflare ذخیره می‌شود، نه در APK.",14,MUTED,false);
+        fields.addView(explanation,lp(-1,-2));
+        EditText endpoint=new EditText(this);endpoint.setSingleLine(true);
+        endpoint.setTextColor(WHITE);endpoint.setHintTextColor(MUTED);
+        endpoint.setHint("https://your-worker.workers.dev");
+        endpoint.setText(preferences.getString("ai_worker_origin",""));
+        fields.addView(endpoint,lp(-1,58));
+        EditText code=new EditText(this);code.setSingleLine(true);
+        code.setTextColor(WHITE);code.setHintTextColor(MUTED);
+        code.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        code.setHint("کد اتصال Worker (حداقل ۱۲ کاراکتر)");
+        code.setText(preferences.getString("ai_access_code",""));
+        fields.addView(code,lp(-1,58));
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("اتصال موتور DeepSeek")
+          .setMessage("برای حفظ امنیت، فقط URL سرویس Cloudflare Worker و کد دسترسی اختصاصی خودت را وارد کن.")
+          .setView(fields).setNegativeButton("لغو",null).setPositiveButton("ذخیره",null).create();
+        dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w->{
+            String origin=AiResolverUrlPolicy.normalize(endpoint.getText().toString());
+            String token=code.getText().toString().trim();
+            if(origin.isEmpty()||token.length()<12){
+                Toast.makeText(this,"URL HTTPS معتبر و کد حداقل ۱۲ کاراکتری لازم است",Toast.LENGTH_LONG).show();return;
+            }
+            preferences.edit().putString("ai_worker_origin",origin).putString("ai_access_code",token).apply();
+            dialog.dismiss();
+            if(afterSave!=null)afterSave.run();
+            else Toast.makeText(this,"اتصال ذخیره شد؛ برای آزمون، یک فیلم را انتخاب کن.",Toast.LENGTH_LONG).show();
+        }));
+        dialog.show();
+    }
+    private void resolveWithAI(FarsiPlexTitle item){
+        String worker=preferences.getString("ai_worker_origin","");
+        String code=preferences.getString("ai_access_code","");
+        if(AiResolverUrlPolicy.normalize(worker).isEmpty()||code.length()<12){
+            configureAI(()->resolveWithAI(item));return;
+        }
+        info("در حال بررسی لینک‌های عمومی برای «"+item.name+"» …");
+        String originalPage=item.url;
+        aiResolver.resolve(worker,code,item.url,item.name,(candidate,message)->{
+            if(destroyed||!"detail".equals(screen)||selected==null||!selected.url.equals(originalPage))return;
+            if(!candidate.isEmpty()){
+                // A server-side HTTP check is not a real playback test. Do not auto-play.
+                selected.publicStream=candidate;
+                showDetail(selected,true);
+                info("منبع بررسی‌شده دریافت شد؛ برای آزمایش واقعی روی ▶ پخش بزن.");
+            }else{
+                info(message);
+                new AlertDialog.Builder(this).setTitle("نتیجهٔ بررسی DeepSeek")
+                  .setMessage(message+"\n\nهوش مصنوعی نمی‌تواند لینک قفل‌شده، DRM یا منبعی که در صفحهٔ عمومی وجود ندارد ایجاد کند.")
+                  .setPositiveButton("متوجه شدم",null).show();
+            }
+        });
     }
     private void addStream(FarsiPlexTitle item){
         EditText field=new EditText(this);field.setTextColor(WHITE);field.setHintTextColor(MUTED);
@@ -382,6 +527,7 @@ public final class MainActivity extends Activity {
         else super.onBackPressed();
     }
     @Override protected void onDestroy(){
-        destroyed=true;generation++;source.close();images.close();super.onDestroy();
+        destroyed=true;generation++;source.close();images.close();aiResolver.close();super.onDestroy();
     }
 }
+

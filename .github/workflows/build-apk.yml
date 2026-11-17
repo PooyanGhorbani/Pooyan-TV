@@ -1,8 +1,8 @@
-name: Build Pooyan TV FarsiPlex v0.4 Preview
+name: Build Pooyan TV v0.4.2 DeepSeek Preview
 on:
   workflow_dispatch:
   push:
-    branches: [main, dev/v0.4-farsiplex]
+    branches: [main, dev/v0.4.2-deepseek]
     paths:
       - 'app/**'
       - 'tests/**'
@@ -12,6 +12,7 @@ on:
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
+      - 'resolver-worker/**'
 permissions:
   contents: write
 jobs:
@@ -33,6 +34,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify Cloudflare Worker tests
+        run: node --test resolver-worker/resolver.test.mjs
       - name: Verify offline source and policies
         run: bash scripts/verify-offline.sh
       - name: Compile, unit-test parser, lint
@@ -41,7 +47,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-FarsiPlex-v0.4-reports
+          name: Pooyan-TV-FarsiPlex-v0.4.2-reports
           path: |
             app/build/reports/lint-results-debug.*
             app/build/reports/tests/**
@@ -51,14 +57,14 @@ jobs:
       - name: Upload preview APK
         uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-FarsiPlex-v0.4-Preview-APK
+          name: Pooyan-TV-FarsiPlex-v0.4.2-Preview-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
-      - name: Publish v0.4 prerelease
+      - name: Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4-preview.apk
-          gh release view v0.4 >/dev/null 2>&1 || gh release create v0.4 --target dev/v0.4-farsiplex --prerelease --title 'Pooyan TV v0.4 FarsiPlex' --notes 'Native FarsiPlex public catalog preview. FarsiPlex playback is not verified. Separate preview package preserves v0.1.'
-          gh release upload v0.4 Pooyan-TV-v0.4-preview.apk --clobber
+          cp app/build/outputs/apk/debug/app-debug.apk Pooyan-TV-v0.4.2-preview.apk
+          gh release view v0.4.2 >/dev/null 2>&1 || gh release create v0.4.2 --target dev/v0.4.2-deepseek --prerelease --title 'Pooyan TV v0.4.2' --notes 'Native TV preview. DeepSeek requires configured Worker secrets. FarsiPlex streaming is not verified.'
+          gh release upload v0.4.2 Pooyan-TV-v0.4.2-preview.apk --clobber
