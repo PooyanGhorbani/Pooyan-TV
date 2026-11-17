@@ -1,36 +1,55 @@
-# Pooyan TV v0.1
+# Pooyan TV — FarsiPlex Edition v0.4
 
-اپ Android TV با هفت منبع وب، کنترل ریموت، WebView، پلیر Media3 برای MP4/HLS/DASH، جست‌وجو، علاقه‌مندی و ادامهٔ تماشا.
+**Android TV native catalog prototype** — اپ مستقل، با نام نمایشی «Pooyan TV» و منبع اطلاعات عمومی **فقط https://farsiplex.com/**.
 
-## دریافت APK
+## این نسخه چه کار می‌کند؟
 
-فایل نصب و SHA256 در [Release v0.1](https://github.com/PooyanGhorbani/Pooyan-TV/releases/tag/v0.1) قرار می‌گیرند. خروجی هر اجرای ساخت در بخش Actions نیز نگهداری می‌شود.
+- رابط کاملاً بومی Android TV بدون WebView، با کارت‌های پوستر و ناوبری ریموت D-pad
+- خانه، فیلم‌ها، سریال‌ها، صفحهٔ جزئیات، فهرست قسمت‌های سریال و جست‌وجو در عناوین عمومی
+- خواندن عنوان، پوستر و اطلاعات عمومی از صفحات HTML عمومی `/movie/`، `/tvshow/` و `/episode/` با Jsoup؛ **API رسمی یا توافق دسترسی نداریم**
+- ذخیرهٔ محلی علاقه‌مندی‌ها
+- پخش Media3 برای لینک مستقیم HTTPS با فرمت‌های MP4/WebM/HLS/DASH که **کاربر مجاز است استفاده کند**؛ ادامهٔ پخش توسط PlayerActivity ذخیره می‌شود
+- عدم استفاده از API پولی، ورود، کوکی، اسکریپت پلیر، DRM یا لینک خصوصی
+- فایل‌ساز GitHub Actions برای APK آزمایشی، با امکان نصب موازی کنار v0.1
 
-## ساخت
+**مهم:** ویدئوهای FarsiPlex هنوز از طریق اپ قابل پخش اعلام نشده‌اند؛ منبع مستقیم معتبر و مجوز آن جداست. تعداد پوستر ≠ تعداد فیلم قابل‌تماشا. نمایش اطلاعات و پوسترهای سایت ممکن است با تغییر HTML یا سیاست‌های دسترسی از کار بیفتد. پیش از انتشار عمومی اپ متصل به FarsiPlex، شرایط و اجازهٔ صاحب سایت را بررسی کنید.
 
-JDK 17، Gradle 8.9، Android Gradle Plugin 8.7.3، SDK 35 و Media3 1.6.1 استفاده می‌شوند.
+## ساخت APK
 
-```sh
-bash scripts/verify-offline.sh
-gradle --no-daemon assembleDebug assembleDebugAndroidTest lintDebug
+پیش‌نیاز: JDK 17، Android SDK API 35 و Build Tools 35، Gradle 8.9 و دسترسی به Maven Central/Google Maven.
+
+```
+sh scripts/verify-offline.sh
+gradle --no-daemon assembleDebug testDebugUnitTest lintDebug
 ```
 
-Workflow در `.github/workflows/build-apk.yml` با push به main یا اجرای دستی فعال می‌شود.
+خروجی پس از **ساخت موفق**: `app/build/outputs/apk/debug/app-debug.apk`.
 
-## نصب با حفظ داده
+در GitHub، فایل‌ها را در شاخه `dev/v0.4-farsiplex` قرار دهید، سپس **Actions → Build Pooyan TV FarsiPlex v0.4 Preview → Run workflow**؛ فایل `Pooyan-TV-FarsiPlex-v0.4-Preview-APK` را از بخش Artifacts همان اجرا بردارید. APK تا زمان اجرای Workflow آماده نیست.
 
-در ویندوز از `scripts/Install-PooyanTV.ps1 -TvAddress IP:PORT -ApkPath PATH` استفاده کنید. نصب با `adb install -r` انجام می‌شود و اسکریپت هرگز برنامه‌ای را حذف نمی‌کند. امضای Debug ممکن است بین اجراهای CI تغییر کند؛ در صورت ناسازگاری امضا، نصب متوقف می‌شود. برای انتشار پایدار بعدی کلید امضای خصوصی ثابت لازم است. versionName برابر 0.1 و versionCode برابر 5 است.
+نصب آزمایشی با ADB مجاز روی تلویزیون:
 
-## آزمون روی دستگاه
-
-APK آزمایش در artifact ساخت وجود دارد. پس از نصب آن، دستور زیر تست ریموت، علاقه‌مندی، پخش نمونهٔ عمومی، ذخیرهٔ پیشرفت، WebView، تمام‌صفحه و بررسی صفحات هفت منبع را اجرا می‌کند:
-
-```sh
-adb shell am instrument -w com.pooyan.namakadetv.test/androidx.test.runner.AndroidJUnitRunner
+```
+# Windows PowerShell (در فولدر سورس)
+./scripts/Install-PooyanTV-v0.4.ps1 -TvAddress "TV_IP:5555" -ApkPath "C:\\path\\to\\app-debug.apk"
 ```
 
-بررسی سایت‌ها، نتیجهٔ شبکه و صفحه را گزارش می‌کند؛ به معنای تأیید پخش تمام فیلم‌های آن‌ها نیست. گزارش نهایی دستگاه در `docs/DEVICE_RESULTS_FA.md` ثبت می‌شود.
+نسخهٔ Debug شناسهٔ `com.pooyan.namakadetv.preview` دارد و نباید نسخهٔ اصلی v0.1 را حذف کند. احتمال دارد نسخهٔ Debug قبلی v0.2/v0.3 با همان شناسه و امضای متفاوت نصب شده باشد؛ در این حالت **بدون تأیید کاربر حذف نکنید**. سازگاری نصب به امضای APK بستگی دارد.
 
-## حریم خصوصی
+## بررسی‌ها و محدودیت‌ها
 
-نشانی‌های شخصی، کوکی‌ها و کلیدها در مخزن عمومی قرار نمی‌گیرند. لینک شخصی Namakade فقط در تنظیمات خود تلویزیون ثبت می‌شود. هیچ DRM یا ورود حسابی دور زده نمی‌شود. دسترسی، کدک، محدودیت منطقه‌ای و نیاز به حساب هر سایت می‌تواند متفاوت باشد.
+در محیط آماده‌سازی، اسکریپت آفلاین (تست URL، پخش، ساختار Java و مانیفست) اجرا شد. آزمون‌های JUnit پارسر نمونهٔ HTML در `app/src/test` اضافه شده‌اند اما **فقط با Gradle / Android SDK** اجرا می‌شوند. اتصال مستقیم از این محیط به farsiplex.com با DNS failure مواجه شد؛ HTML واقعی در اپ و تصاویر از چین/تلویزیون هنوز تست نشده‌اند. هیچ APK از این محیط کامپایل یا روی TV نصب نشده است.
+
+قواعد شبکه: فقط HTTPS دامنهٔ farsiplex.com برای **متادیتا**، بدون ریدایرکت به دامنه‌های متفرقه، حداکثر ۱٫۸ مگابایت HTML و محدودیت تعداد صفحات در جست‌وجو. لینک پخش فقط در صورت افزودن توسط خود کاربر استفاده می‌شود. به‌دلیل احتمال محدودیت کشور، در صورت خطای DNS یا HTTP، پیام مناسب نمایش داده می‌شود.
+
+## ساختار
+
+- `MainActivity.java`: رابط بومی و ناوبری تلویزیون
+- `FarsiPlexRepository.java`: دریافت محدود HTML عمومی
+- `FarsiPlexParser.java`: استخراج عنوان، تصویر و قسمت، بدون استخراج ویدئو
+- `FarsiPlexUrlPolicy.java`: محدودسازی URLهای دامنهٔ موردنظر
+- `CatalogImages.java`: دریافت محدود پوستر
+- `LocalStreams.java`، `PlayerActivity.java`: منبع شخصی و پخش Media3
+- `.github/workflows/build-apk.yml`: ساخت و تست ابری
+
+این پروژه رسمی FarsiPlex نیست و توسط صاحبان آن تأیید یا پشتیبانی نشده است.

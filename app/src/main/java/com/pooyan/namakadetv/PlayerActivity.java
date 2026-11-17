@@ -73,6 +73,7 @@ public final class PlayerActivity extends Activity {
         if (playerView != null) { playerView.setFocusable(true); playerView.requestFocus(); }
     };
 
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -201,12 +202,12 @@ public final class PlayerActivity extends Activity {
                     new AlertDialog.Builder(PlayerActivity.this)
                             .setTitle("ویدئو با پلیر اختصاصی باز نشد")
                             .setMessage("ممکن است لینک منقضی شده باشد، منبع به کوکی یا DRM نیاز داشته باشد، " +
-                                    "یا کدک روی تلویزیون پشتیبانی نشود. در حالت مرورگر می‌توانی پخش را ادامه بدهی.\n" +
+                                    "یا کدک روی تلویزیون پشتیبانی نشود.\n" +
                                     error.getErrorCodeName())
-                            .setNegativeButton("برگشت به سایت", (d,w) -> finish())
+                            .setNegativeButton("بازگشت", (d,w) -> finish())
                             .setPositiveButton("تلاش دوباره", (d,w) -> {
                                 playerErrorShown = false;
-                                player.prepare(); player.play();
+                                if (player != null) { player.prepare(); player.play(); }
                             }).show();
                 }
             }
@@ -273,7 +274,7 @@ public final class PlayerActivity extends Activity {
                 String label;
                 if (type == C.TRACK_TYPE_VIDEO) {
                     label = (f.height > 0 ? f.height + "p" : "Video") +
-                            (f.bitrate > 0 ? " · " + f.bitrate/1000000f + " Mbps" : "");
+                            (f.bitrate > 0 ? " · " + String.format(Locale.US, "%.1f", f.bitrate/1000000f) + " Mbps" : "");
                 } else {
                     label = (f.label != null ? f.label : (f.language != null ? f.language :
                             (type == C.TRACK_TYPE_AUDIO ? "Audio" : "Subtitles")));
@@ -378,7 +379,8 @@ public final class PlayerActivity extends Activity {
                     seekBy(key == KeyEvent.KEYCODE_DPAD_LEFT ? -10000 : 10000);
                     return true;
                 }
-                if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER) {
+                if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER ||
+                        key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN) {
                     revealControls(); controls.getChildAt(1).requestFocus(); return true;
                 }
             }
