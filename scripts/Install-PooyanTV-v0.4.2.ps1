@@ -14,6 +14,7 @@ $state = & adb -s $TvAddress get-state
 if ($LASTEXITCODE -ne 0 -or $state -ne 'device') { throw 'Television is not authorized.' }
 & adb -s $TvAddress install -r $ApkPath
 if ($LASTEXITCODE -ne 0) { throw 'Install failed; no uninstall was attempted.' }
-& adb -s $TvAddress shell am start -W -n com.pooyan.namakadetv.preview042/com.pooyan.namakadetv.MainActivity
+& adb -s $TvAddress shell am start -W -n com.pooyan.namakadetv.preview042worker/com.pooyan.namakadetv.MainActivity
 if ($LASTEXITCODE -ne 0) { throw 'Launch failed.' }
 Write-Host 'Pooyan TV v0.4.2 preview installation launched. v0.1 was left untouched.'
+

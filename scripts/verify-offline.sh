@@ -35,9 +35,10 @@ assert 'TvPosterFocusPolicy' in main and 'requestFocus' in main
 assert 'publicStream' in main and 'PublicHtml5Media.find' in sources
 assert 'PlayerActivity.EXTRA_URL' in main
 assert "versionName '0.4.2'" in gradle
-assert "applicationIdSuffix '.preview042'" in gradle
+assert "applicationIdSuffix '.preview042worker'" in gradle
 assert 'Cinemeta' not in main and 'namakade.com' not in main
 assert 'sk-proj-' not in sources and 'DEEPSEEK_API_KEY' not in sources
 assert 'AiResolverClient' in main and 'resolveWithAI' in main
 print('PASS native UI, FarsiPlex-only catalog, media player, Android manifest, preview isolation')
 PY
+
