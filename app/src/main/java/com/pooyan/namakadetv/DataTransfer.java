@@ -8,7 +8,8 @@ public final class DataTransfer {
  public static String exportData(SharedPreferences prefs,LibraryStore library)throws Exception{
   JSONArray favorites=new JSONArray(prefs.getString("favorites","[]")),safe=new JSONArray(),progress=new JSONArray();
   for(int i=0;i<Math.min(150,favorites.length());i++){JSONObject o=favorites.optJSONObject(i);if(o!=null&&page(o.optString("url")))safe.put(new JSONObject().put("url",PlaybackResumePolicy.identity("",o.optString("url"))).put("title",o.optString("title")).put("kind",o.optString("kind")).put("poster",ImageUrlPolicy.allowed(o.optString("poster"))?o.optString("poster"):""));}
-  for(LibraryStore.Entry e:library.watched())if(page(e.pageUrl))progress.put(new JSONObject().put("page",PlaybackResumePolicy.identity("",e.pageUrl)).put("title",e.title).put("pos",e.positionMs).put("duration",e.durationMs));
+  java.util.List<LibraryStore.Entry> history=new java.util.ArrayList<>(library.watched());java.util.Set<String> pages=new java.util.HashSet<>();for(LibraryStore.Entry e:history)pages.add(e.pageUrl);for(LibraryStore.Entry e:library.resumeList())if(pages.add(e.pageUrl))history.add(e);
+  for(LibraryStore.Entry e:history)if(page(e.pageUrl))progress.put(new JSONObject().put("page",PlaybackResumePolicy.identity("",e.pageUrl)).put("title",e.title).put("pos",e.positionMs).put("duration",e.durationMs));
   return new JSONObject().put("format","pooyan-profile").put("version",1).put("favorites",safe).put("progress",progress).toString();
  }
  public static void importData(String raw,SharedPreferences prefs,LibraryStore library)throws Exception{

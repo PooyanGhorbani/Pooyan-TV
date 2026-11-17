@@ -49,16 +49,16 @@ public final class NamakadeRepository {
     }
     public void search(String text,FarsiPlexRepository.Result callback){
         if(text==null||text.trim().isEmpty()){callback.receive(new ArrayList<>(),null);return;}
-        final String query=CatalogIdentity.normalized(text);
-        final List<FarsiPlexTitle> found=new ArrayList<>();
-        final int[] done={0};final String[] firstError={null};
-        FarsiPlexRepository.Result join=(items,error)->{
-            if(error!=null && firstError[0]==null)firstError[0]=error;
-            for(FarsiPlexTitle item:items)if(SearchPolicy.matches(item,text))found.add(item);
-            if(++done[0]==2)callback.receive(found,found.isEmpty()?firstError[0]:null);
-        };
-        list("movie",1,join);
-        list("series",1,join);
+        executor.execute(()->{
+            List<FarsiPlexTitle> found=new ArrayList<>();String error=null;
+            try{
+                String url=NamakadeCatalog.BASE+"/search?page=livesearch&searchField="+java.net.URLEncoder.encode(SearchPolicy.normalize(text),"UTF-8");
+                Connection.Response response=Jsoup.connect(url).method(Connection.Method.POST).followRedirects(false).ignoreHttpErrors(true).timeout(9000).maxBodySize(600000).execute();
+                if(response.statusCode()!=200||response.contentType()==null||!response.contentType().contains("text/html"))throw new IOException("public search unavailable");
+                found=NamakadeCatalog.searchListing(response.body());
+            }catch(Exception e){error="جست‌وجوی یکی از منابع در دسترس نیست؛ نتیجه‌های سایر منابع نمایش داده می‌شوند.";}
+            List<FarsiPlexTitle> result=found;String message=error;activity.runOnUiThread(()->callback.receive(result,message));
+        });
     }
     public void detail(FarsiPlexTitle item,FarsiPlexRepository.DetailResult cb){
         executor.execute(()->{

@@ -35,6 +35,7 @@ public class LiveSecondarySourceTest {
  @Test public void catalogPostersAndExplicitHtml5Media()throws Exception{
   Assume.assumeTrue("1".equals(System.getenv("POOYAN_LIVE_CHECK")));
   List<String> out=new ArrayList<>();out.add("UTC\t"+java.time.Instant.now());out.add("kind\tpage\tposterHEAD:type\tepisodes\tmedia");
+  try{Connection.Response search=Jsoup.connect(NamakadeCatalog.BASE+"/search?page=livesearch&searchField=meymoone").method(Connection.Method.POST).followRedirects(false).timeout(12000).maxBodySize(600000).execute();out.add("public-search\tPOST:/search\t"+search.statusCode()+"\t"+NamakadeCatalog.searchListing(search.body()).size()+"\tnot-a-stream");}catch(Exception e){out.add("public-search\tPOST:/search\t-\t-\t"+e.getClass().getSimpleName());}
   for(String kind:new String[]{"movie","series"}){
    try{
     String url=NamakadeCatalog.start(kind);List<FarsiPlexTitle> list=NamakadeCatalog.listing(fetch(url).outerHtml(),url,kind);

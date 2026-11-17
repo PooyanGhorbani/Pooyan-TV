@@ -117,7 +117,7 @@ public final class PlayerActivity extends Activity {
         library = new LibraryStore(this);
         candidates=CandidateCodec.decode(getIntent().getStringExtra("candidates"));
         if(candidates.isEmpty())candidates.add(new PlaybackCandidate(streamUrl,pageUrl,0,false));
-        currentCandidate=failoverSession.next(candidates,System.currentTimeMillis());
+        currentCandidate=failoverSession.next(candidates,android.os.SystemClock.elapsedRealtime());
         if(currentCandidate!=null)streamUrl=currentCandidate.url;
         episodeContext=EpisodeOrder.decode(getIntent().getStringExtra("episodes"));
         nextEpisode=EpisodeOrder.next(episodeContext,pageUrl);
@@ -533,10 +533,10 @@ public final class PlayerActivity extends Activity {
     private void subtitleDelay(){new AlertDialog.Builder(this).setTitle("تأخیر مثبت زیرنویس").setMessage("تأخیر بر اساس زمان رسانه اعمال می‌شود. جلو انداختن زیرنویس پشتیبانی نمی‌شود.").setItems(new String[]{"بدون تأخیر","نیم ثانیه","۱ ثانیه","۲ ثانیه","۳ ثانیه","۵ ثانیه"},(d,i)->{profilePrefs.edit().putInt("subtitle_delay",new int[]{0,500,1000,2000,3000,5000}[i]).apply();cueQueue.clear();captions.setCues(java.util.Collections.emptyList());}).show();}
     private void failover(SourceHealth.Failure reason){
         if(switching||stopping||isFinishing())return;
-        cancelNext();if(currentCandidate!=null)SourceHealth.failed(currentCandidate.url,reason,System.currentTimeMillis());
+        cancelNext();if(currentCandidate!=null)SourceHealth.failed(currentCandidate.url,reason,android.os.SystemClock.elapsedRealtime());
         long position=player==null?Math.max(0,pendingPosition):Math.max(0,player.getCurrentPosition());
         boolean playing=player!=null?player.getPlayWhenReady():resumePlayWhenReady;
-        PlaybackCandidate next=failoverSession.next(candidates,System.currentTimeMillis());
+        PlaybackCandidate next=failoverSession.next(candidates,android.os.SystemClock.elapsedRealtime());
         if(next==null){exhausted(reason);return;}
         final int generation=playbackGeneration;
         switching=true;stateView.setText("در حال بررسی منبع جایگزین…");

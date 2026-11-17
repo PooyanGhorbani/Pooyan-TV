@@ -16,7 +16,7 @@ public final class NamakadeCatalog {
     public static String safeUrl(String url){
         try{
             URI u=new URI(url).normalize();
-            if(!"https".equalsIgnoreCase(u.getScheme())||u.getUserInfo()!=null||u.getPort()!=-1)return "";
+            if(!"https".equalsIgnoreCase(u.getScheme())||u.getUserInfo()!=null||u.getPort()!=-1&&u.getPort()!=443)return "";
             String host=u.getHost();
             if(!"namakadeh.com".equalsIgnoreCase(host)&&!"namakade.com".equalsIgnoreCase(host))return "";
             String path=u.getPath();
@@ -77,6 +77,18 @@ public final class NamakadeCatalog {
             }catch(Exception ignored){}
         }
         return "";
+    }
+    /** Public live-search HTML returned by the site's own POST /search UI. */
+    public static List<FarsiPlexTitle> searchListing(String html){
+        Document doc=Jsoup.parse(html,BASE);List<FarsiPlexTitle> out=new ArrayList<>();Set<String> seen=new HashSet<>();
+        for(Element row:doc.select(".searchResultHold")){
+            Element a=row.selectFirst("a[href]"),label=row.selectFirst(".searchTxtHold");if(a==null||label==null)continue;
+            String url=safeUrl(a.absUrl("href"));if(url.isEmpty()||!seen.add(url))continue;
+            String kind=url.contains("/episodes/")?"episode":url.contains("/series")?"series":"movie";
+            FarsiPlexTitle item=new FarsiPlexTitle(url,kind,label.text().trim());if(item.name.isEmpty())continue;
+            Element img=row.selectFirst("img[src]");if(img!=null&&ImageUrlPolicy.allowedFor(url,img.absUrl("src")))item.poster=img.absUrl("src");
+            out.add(item);if(out.size()>=90)break;
+        }return out;
     }
     public static FarsiPlexTitle details(String html,String url,String kind){
         if(safeUrl(url).isEmpty())throw new IllegalArgumentException("unsafe url");

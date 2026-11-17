@@ -73,7 +73,7 @@ public final class FarsiPlexRepository {
         executor.execute(()->{
             List<FarsiPlexTitle> items=new ArrayList<>();String error=null;
             try{
-                String url="https://farsiplex.com/?s="+java.net.URLEncoder.encode(query,"UTF-8");
+                String url="https://farsiplex.com/?s="+java.net.URLEncoder.encode(SearchPolicy.normalize(query),"UTF-8");
                 Connection.Response response=Jsoup.connect(url).followRedirects(false).timeout(11000).maxBodySize(1800000).ignoreHttpErrors(true).execute();
                 if(response.statusCode()!=200)throw new IOException("HTTP "+response.statusCode());
                 String html=response.body();items.addAll(FarsiPlexParser.listing(html,url,"movie"));items.addAll(FarsiPlexParser.listing(html,url,"series"));
