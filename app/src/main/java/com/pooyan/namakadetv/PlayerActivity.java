@@ -72,7 +72,7 @@ public final class PlayerActivity extends Activity {
     private List<FarsiPlexTitle> episodeContext=new ArrayList<>();private FarsiPlexTitle nextEpisode;
     private UnifiedRepository nextRepository;private CatalogImages nextImages;private AlertDialog nextDialog;
     private EpisodeOrder.Countdown nextCountdown;
-    private final Runnable nextTicker=new Runnable(){public void run(){if(stopping||nextDialog==null||!nextDialog.isShowing()||nextCountdown==null)return;boolean advance=player!=null&&(player.isPlaying()||player.getPlaybackState()==Player.STATE_ENDED);if(nextCountdown.tick(advance,!stopping)){playNextEpisode();return;}nextDialog.setTitle("قسمت بعد · "+nextCountdown.remaining()+" ثانیه"+(advance?"":" · مکث"));handler.postDelayed(this,1000);}};
+    private final Runnable nextTicker=new Runnable(){public void run(){if(stopping||nextDialog==null||!nextDialog.isShowing()||nextCountdown==null)return;boolean advance=player!=null&&EpisodeOrder.advancing(player.isPlaying(),player.getPlaybackState()==Player.STATE_ENDED,player.getPlayWhenReady());if(nextCountdown.tick(advance,!stopping)){playNextEpisode();return;}nextDialog.setTitle("قسمت بعد · "+nextCountdown.remaining()+" ثانیه"+(advance?"":" · مکث"));handler.postDelayed(this,1000);}};
     private LibraryStore library;
     private ExoPlayer player;
     private DefaultTrackSelector trackSelector;
@@ -326,6 +326,7 @@ public final class PlayerActivity extends Activity {
     }
     private void togglePlayback() {
         if (player == null) return;
+        if(player.getPlaybackState()==Player.STATE_ENDED){cancelNext();nextOffered=false;player.seekTo(0);player.play();return;}
         if (player.getPlayWhenReady()) player.pause(); else player.play();
     }
     private boolean canSeek(){return player!=null&&PlaybackResumePolicy.canSeek(player.getDuration(),player.isCurrentMediaItemLive(),player.isCurrentMediaItemSeekable());}
@@ -458,6 +459,7 @@ public final class PlayerActivity extends Activity {
         if(e.getAction()==KeyEvent.ACTION_UP&&(e.getKeyCode()==revealKey||e.getKeyCode()==KeyEvent.KEYCODE_BACK)){revealKey=-1;return true;}
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             int key = e.getKeyCode();
+            if(key==KeyEvent.KEYCODE_MEDIA_STOP){nextOffered=true;cancelNext();if(player!=null)player.pause();saveProgress();finish();return true;}
             if(key==KeyEvent.KEYCODE_BACK){
                 if(e.getRepeatCount()>0)return true;
                 if(RemoteInputPolicy.backHides(timelinePanel!=null&&timelinePanel.isShown(),player!=null&&player.isPlaying())){
@@ -563,7 +565,7 @@ public final class PlayerActivity extends Activity {
     private void maybeNext(){
         if(stopping||nextOffered||resumePrompt||nextEpisode==null||player==null||!profilePrefs.getBoolean("autoplay",true)||player.isCurrentMediaItemLive())return;
         long duration=player.getDuration(),position=player.getCurrentPosition();
-        if(duration>90000&&duration-position<=45000&&(player.isPlaying()||player.getPlaybackState()==Player.STATE_ENDED))showNext(false);
+        if(duration>90000&&duration-position<=45000&&EpisodeOrder.advancing(player.isPlaying(),player.getPlaybackState()==Player.STATE_ENDED,player.getPlayWhenReady()))showNext(false);
     }
     private void showNext(boolean manual){
         if(nextEpisode==null){if(manual)toast("قسمت بعدی با شمارهٔ متوالی و فصل معتبر در دسترس نیست.");return;}
