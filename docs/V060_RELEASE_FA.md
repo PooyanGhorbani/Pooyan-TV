@@ -10,3 +10,12 @@
 انتشار خودکار فقط پس از build، unit tests، Lint، Worker tests و تست emulator Android TV انجام می‌شود. این‌ها جای تست Xiaomi و تأیید پخش تصویر و صدا را نمی‌گیرند. برنامه روی TV کاربر نصب یا اجرا نشده است.
 
 محدودیت‌ها: دادهٔ خصوصی v0.5.1 به‌علت بستهٔ متفاوت خودکار قابل دسترسی نیست؛ فایل خروجی سازگار لازم است و v0.5.1 چنین خروجی‌ای ندارد. فصل‌های AJAX، گذار نامطمئن بین فصل‌ها و جلو انداختن زیرنویس پشتیبانی نمی‌شوند. نبود سال/شناسه ممکن است دو کارت مشابه را جدا نگه دارد. صوت وابسته به سرویس نصب‌شده و پشتیبانی زبان آن است. محتوای دارای محدودیت دسترسی دور زده نمی‌شود. APK release غیرقابل debug با کلید preview/debug امضا می‌شود و امضای تولیدی دائمی تضمین نشده است. v0.5.1 دست‌نخورده باقی است.
+
+نتیجهٔ نهایی R3: build debug/release موفق؛ ۵۸ تست JVM و ۹ تست Worker موفق؛ Lint صفر خطا و ۱۶ هشدار؛ ۸ تست Android TV API34 بدون شکست یا skip. Media3 قسمت ۱ میمون مست را با ۳۴ فریم واقعی، audio format و pause/resume/seek آزمود؛ منوی ترک و اندازه/تأخیر زیرنویس، media key در dialog و ماندگاری progress پس از cold-start تأیید شدند. صدای فیزیکی، subtitle واقعی و Xiaomi تأیید نشده‌اند. پنج media از FarsiPlex و دو نمونهٔ منبع قدیمی با probe محدود HTTP تأیید شدند؛ این تأیید پخش کامل نیست.
+
+فایل پیشنهادی: **Pooyan-TV-v0.6.0-premium-preview-r3.apk**
+SHA256: `c50d0e94778847fb6b67c363136df4942dcf58ace77d6bc2b70036d2b4d85094`
+
+[دانلود مستقیم R3](https://github.com/PooyanGhorbani/Pooyan-TV/releases/download/v0.6.0/Pooyan-TV-v0.6.0-premium-preview-r3.apk) · [گزارش کامل فارسی](https://github.com/PooyanGhorbani/Pooyan-TV/blob/dev/v0.6.0-premium/docs/V060_RESULTS_FA.md) · [CI موفق](https://github.com/PooyanGhorbani/Pooyan-TV/actions/runs/44202623853)
+
+کد APK: `968a2c56b6aa66ddbd48b14fa07f98cfffd5d366`. نصب روی Xiaomi انجام نشده؛ منتظر اجازهٔ جداگانهٔ کاربر است.
