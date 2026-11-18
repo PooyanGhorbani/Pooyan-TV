@@ -96,20 +96,7 @@ jobs:
             adb kill-server || true
             adb start-server
             adb version
-          script: |
-            booted=""
-            for attempt in $(seq 1 10); do
-              adb reconnect offline || true
-              booted="$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null || true)"
-              if [ "$booted" = "1" ]; then break; fi
-              sleep 2
-            done
-            test "$booted" = "1"
-            if [ "${{ matrix.profile }}" = "tv_720p" ]; then
-              gradle --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.pooyan.namakadetv.TvPremiumInstrumentedTest#zHomeHeroCarouselAndRemoteUpNavigationWork
-            else
-              gradle --no-daemon connectedDebugAndroidTest
-            fi
+          script: gradle --no-daemon connectedDebugAndroidTest
       - name: Save Android TV instrumented reports
         if: always()
         uses: actions/upload-artifact@v4
