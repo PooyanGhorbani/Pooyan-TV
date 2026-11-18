@@ -40,7 +40,7 @@ jobs:
       - name: Resolver Worker tests (no deployment)
         run: node --test resolver-worker/resolver.test.mjs
       - name: Build debug, JVM unit tests and Android lint
-        run: gradle --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug
+        run: gradle --no-daemon --stacktrace assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug
       - name: Save unsigned dev debug APK for inspection only (do NOT install over stable)
         uses: actions/upload-artifact@v4
         with:
