@@ -107,7 +107,39 @@ public class TvPremiumInstrumentedTest {
    System.out.println("EMULATOR_MEDIA3: rendered video frames="+frames[0]+"; audio/video track menus, subtitle size/delay choices, pause/resume and seek exercised. No physical speaker or actual subtitle-track claim.");
   }finally{library.forget(page,resolved.media);settings.edit().putInt("subtitle_delay",oldDelay).putFloat("subtitle_size",oldSize).apply();}
  }
- @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
+  /** InputDispatcher navigation from bottom rails back to the hero, plus manual slides. */
+  @Test public void homeHeroCarouselAndRemoteUpNavigationWork(){
+   final LinearLayout[] rails=new LinearLayout[2];
+   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+    scenario.onActivity(a->{
+     set(a,"destroyed",true); // Prevent network callbacks and timer rotation during this fixture.
+     LinearLayout content=(LinearLayout)field(a,"content");
+     if(content.getChildCount()>1)content.removeViews(1,content.getChildCount()-1);
+     @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> movies=(java.util.List<FarsiPlexTitle>)field(a,"loadedMovies");
+     @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> series=(java.util.List<FarsiPlexTitle>)field(a,"loadedSeries");
+     movies.clear();series.clear();
+     FarsiPlexTitle first=new FarsiPlexTitle("https://farsiplex.com/movie/fixture-a/","movie","Fixture A");first.poster="https://invalid.example/a.jpg";
+     FarsiPlexTitle second=new FarsiPlexTitle("https://farsiplex.com/tvshow/fixture-b/","series","Fixture B");second.poster="https://invalid.example/b.jpg";
+     movies.add(first);series.add(second);
+     invoke(a,"refreshFeaturedCarousel",new Class[]{});
+     for(int n=0;n<2;n++){
+      rails[n]=new LinearLayout(a);content.addView(rails[n]);
+      invoke(a,"card",new Class[]{LinearLayout.class,FarsiPlexTitle.class},rails[n],
+          new FarsiPlexTitle("https://farsiplex.com/movie/rail-"+n+"/","movie","Rail"+n));
+     }
+     assertTrue(rails[1].getChildAt(0).requestFocus());
+    });
+    key(KeyEvent.KEYCODE_DPAD_UP);
+    scenario.onActivity(a->assertTrue("UP moves to previous poster row",rails[0].getChildAt(0).isFocused()));
+    key(KeyEvent.KEYCODE_DPAD_UP);
+    scenario.onActivity(a->assertEquals("home-primary",a.getCurrentFocus().getTag()));
+    key(KeyEvent.KEYCODE_DPAD_LEFT);
+    scenario.onActivity(a->assertEquals("Fixture B",((FarsiPlexTitle)field(a,"featured")).name));
+    key(KeyEvent.KEYCODE_DPAD_UP);
+    scenario.onActivity(a->assertTrue("UP reaches top navigation",a.getCurrentFocus().getParent()==field(a,"navigationBar")));
+   }
+  }
+  @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
    InstrumentationRegistry.getInstrumentation().waitForIdleSync();Thread.sleep(2500);
    scenario.onActivity(a->{assertFalse(a.isFinishing());FrameLayout root=(FrameLayout)field(a,"root");assertNotNull(root.findViewWithTag("home-primary"));});

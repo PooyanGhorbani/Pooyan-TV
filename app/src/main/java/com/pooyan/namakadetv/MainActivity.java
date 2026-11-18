@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -27,6 +29,7 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -41,6 +44,19 @@ public final class MainActivity extends Activity {
     private FarsiPlexTitle featured;
     private TextView featuredTitle,featuredDescription;
     private ImageView featuredBackdrop;
+    private FrameLayout heroFrame;
+    private LinearLayout heroActions;
+    private TextView heroIndicator;
+    private final List<FarsiPlexTitle> heroSlides = new ArrayList<>();
+    private int heroIndex;
+    private final Handler heroHandler = new Handler(Looper.getMainLooper());
+    private final Runnable rotateHero = new Runnable() {
+        @Override public void run() {
+            if (destroyed || !"home".equals(screen)) return;
+            if (heroSlides.size() > 1 && !heroActionsFocused()) advanceHero(1);
+            scheduleHeroRotation();
+        }
+    };
     private CatalogImages images;
     private LocalStreams streams;
     private AiResolverClient aiResolver;
@@ -100,6 +116,7 @@ public final class MainActivity extends Activity {
     }
     private void gap(LinearLayout l,int width){l.addView(new View(this),lp(width,1));}
     private void begin(String destination){
+        heroHandler.removeCallbacks(rotateHero);
         screen=destination;generation++;root.removeAllViews();
         LinearLayout outer=vertical();root.addView(outer,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout navigation=horizontal();navigationBar=navigation;navigation.setPadding(dp(41),dp(13),dp(32),dp(8));
@@ -138,8 +155,8 @@ public final class MainActivity extends Activity {
         content.addView(section,p);
     }
     private void home(){
-        parentSeries=null;begin("home");
-        FrameLayout hero=new FrameLayout(this);
+        parentSeries=null;begin("home");heroSlides.clear();heroIndex=0;featured=null;
+        FrameLayout hero=new FrameLayout(this);heroFrame=hero;
         hero.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
                 new int[]{0xFF15151B,0xFF242027,0xFF08080B}));
         featuredBackdrop=new ImageView(this);
@@ -156,10 +173,10 @@ public final class MainActivity extends Activity {
         TextView eyebrow=text("POOYAN TV  •  ORIGINAL CINEMA EXPERIENCE",12,0xFFFF8087,true);
         eyebrow.setLetterSpacing(.06f);story.addView(eyebrow,lp(-1,32));
         featuredTitle=text("یک شب سینمایی، فقط برای تو",37,WHITE,true);
-        featuredTitle.setMaxLines(2);story.addView(featuredTitle,lp(-1,100));
+        featuredTitle.setMaxLines(2);story.addView(featuredTitle,lp(-1,88));
         featuredDescription=text("تازه‌ترین فیلم‌ها و سریال‌های ایرانی را کشف کن.",16,0xFFD7D7DD,false);
-        featuredDescription.setMaxLines(3);story.addView(featuredDescription,lp(-1,77));
-        LinearLayout actions=horizontal();
+        featuredDescription.setMaxLines(3);story.addView(featuredDescription,lp(-1,68));
+        LinearLayout actions=horizontal();heroActions=actions;actions.setTag("hero-actions");
         actions.addView(button("▶  تماشا",true,()->{
             if(featured!=null)detail(featured);else browse("movie");
         }),lp(161,50));gap(actions,11);
@@ -167,16 +184,22 @@ public final class MainActivity extends Activity {
             if(featured!=null)detail(featured);else browse("series");
         }),lp(177,50));
         actions.getChildAt(0).setTag("home-primary");
+        actions.getChildAt(1).setTag("home-more");
         for(int i=0;i<actions.getChildCount();i++)actions.getChildAt(i).setOnKeyListener((v,k,e)->{
             if(TvUi.activate(v,k,e))return true;
             if(e.getAction()!=KeyEvent.ACTION_DOWN)return false;
-            if(k==KeyEvent.KEYCODE_DPAD_DOWN){List<LinearLayout> rows=new ArrayList<>();posterRows(content,rows);if(!rows.isEmpty())return focusPoster(rows.get(0).getChildAt(0));return true;}
-            if(k==KeyEvent.KEYCODE_DPAD_UP)return focusPoster(navigationBar.getChildAt(1));
+            // Preserve left/right focus between Play and Details. At the edges, change slides.
+            if(k==KeyEvent.KEYCODE_DPAD_LEFT && v==actions.getChildAt(0)){advanceHero(-1);return true;}
+            if(k==KeyEvent.KEYCODE_DPAD_RIGHT && v==actions.getChildAt(1)){advanceHero(1);return true;}
             return false;
         });
         story.addView(actions,lp(-1,53));
+        heroIndicator=text("پیشنهادها در حال دریافت‌اند",12,0xFFFFCFD1,false);
+        heroIndicator.setContentDescription("پیشنهادهای صفحهٔ خانه");
+        LinearLayout.LayoutParams indicatorParams=lp(-1,32);indicatorParams.topMargin=dp(6);
+        story.addView(heroIndicator,indicatorParams);
         content.addView(hero,lp(-1,340));
-        if(!loadedMovies.isEmpty())updateFeatured(loadedMovies.get(0));
+        refreshFeaturedCarousel();
         continueSlot=vertical();content.addView(continueSlot,lp(-1,-2));
         addContinueWatching();
         title("تازه‌اضافه‌شده‌ها","");rail("movie");
@@ -188,11 +211,54 @@ public final class MainActivity extends Activity {
         content.addView(button("همهٔ فیلم‌ها",false,()->browse("movie")),lp(210,50));
         content.addView(button("تاریخچهٔ تماشا",false,this::historyScreen),lp(230,50));
     }
+    private void refreshFeaturedCarousel(){
+        if(!"home".equals(screen)||heroIndicator==null)return;
+        String old=featured==null?"":featured.url;
+        List<FarsiPlexTitle> slides=HomeHeroPolicy.select(loadedMovies,loadedSeries);
+        heroSlides.clear();heroSlides.addAll(slides);
+        heroIndex=0;
+        for(int i=0;i<heroSlides.size();i++)if(heroSlides.get(i).url.equals(old)){heroIndex=i;break;}
+        if(heroSlides.isEmpty()){
+            featured=null;heroIndicator.setText(HomeHeroPolicy.label(0,0));
+            featuredTitle.setText("یک شب سینمایی، فقط برای تو");
+            featuredDescription.setText("پیشنهادهای تازه در حال دریافت‌اند.");
+            featuredBackdrop.setImageDrawable(null);
+        }else updateFeatured(heroSlides.get(heroIndex));
+        scheduleHeroRotation();
+    }
+    private boolean heroActionsFocused(){
+        View focus=getCurrentFocus();
+        return heroActions!=null && focus!=null && focus.getParent()==heroActions;
+    }
+    private void scheduleHeroRotation(){
+        heroHandler.removeCallbacks(rotateHero);
+        if(!destroyed && "home".equals(screen) && heroSlides.size()>1)
+            heroHandler.postDelayed(rotateHero,HomeHeroPolicy.ROTATION_MS);
+    }
+    private void advanceHero(int delta){
+        if(heroSlides.size()<2)return;
+        heroIndex=HomeHeroPolicy.indexAfter(heroIndex,delta,heroSlides.size());
+        updateFeatured(heroSlides.get(heroIndex));
+        scheduleHeroRotation();
+    }
     private void updateFeatured(FarsiPlexTitle item){
         if(item==null||featuredTitle==null)return;
-        featured=item;featuredTitle.setText(item.name);
-        featuredDescription.setText(item.description.isEmpty()?"یک انتخاب تازه از سینمای ایران":item.description);
-        if(featuredBackdrop!=null&&!item.poster.isEmpty())images.load(featuredBackdrop,item.poster);
+        boolean changed=featured==null||!item.url.equals(featured.url);
+        featured=item;
+        featuredTitle.setText(item.name);
+        featuredDescription.setText(item.description.isEmpty()?"پیشنهادی از فیلم‌ها و سریال‌های موجود":item.description);
+        if(heroIndicator!=null)heroIndicator.setText(HomeHeroPolicy.label(heroIndex,heroSlides.size()));
+        if(changed && heroFrame!=null){
+            // Replace the ImageView rather than keeping unbounded pre-draw listeners.
+            if(featuredBackdrop!=null)heroFrame.removeView(featuredBackdrop);
+            ImageView next=new ImageView(this);
+            next.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            next.setAlpha(0f);
+            heroFrame.addView(next,0,new FrameLayout.LayoutParams(-1,-1));
+            featuredBackdrop=next;
+            if(!item.poster.isEmpty())images.load(next,item.poster);
+            next.animate().alpha(.47f).setDuration(420).start();
+        }
     }
     private void addContinueWatching(){
         if(continueSlot==null)return;
@@ -238,12 +304,12 @@ public final class MainActivity extends Activity {
             row.removeAllViews();for(int i=0;i<Math.min(cache.size(),18);i++)card(row,cache.get(i));return;
         }
         source.list(kind,1,(list,error)->{
-            if(destroyed)return;
+            if(destroyed || token!=generation || !"home".equals(screen))return;
             row.removeAllViews();
             if(!list.isEmpty()){
                 cache.clear();cache.addAll(list);
                 for(int i=0;i<Math.min(list.size(),18);i++)card(row,list.get(i));
-                if("home".equals(screen)&&"movie".equals(kind))updateFeatured(list.get(0));
+                if("home".equals(screen))refreshFeaturedCarousel();
             }else{
                 row.addView(text("فهرست دریافت نشد. اینترنت، DNS یا محدودیت دسترسی سایت را بررسی کن.",15,MUTED,false),lp(750,85));
             }
@@ -358,14 +424,60 @@ public final class MainActivity extends Activity {
         View hero="home".equals(screen)?root.findViewWithTag("home-primary"):null;
         return hero!=null?focusPoster(hero):navigationBar!=null&&focusPoster(navigationBar.getChildAt(1));
     }
+    private boolean insideHomeContent(View view){
+        android.view.ViewParent parent=view;
+        while(parent!=null){if(parent==content)return true;parent=parent.getParent();}
+        return false;
+    }
+    /** Layout-order focus lanes include the hero, resume tiles, every poster row and footer buttons. */
+    private void collectHomeLanes(View view,List<List<View>> lanes){
+        if(view==null||view.getVisibility()!=View.VISIBLE)return;
+        Object tag=view.getTag();
+        if(view==heroActions||"poster-row".equals(tag)){
+            if(view instanceof ViewGroup){
+                List<View> lane=new ArrayList<>();ViewGroup group=(ViewGroup)view;
+                for(int i=0;i<group.getChildCount();i++){
+                    View child=group.getChildAt(i);
+                    if(child.getVisibility()==View.VISIBLE && child.isFocusable())lane.add(child);
+                }
+                if(!lane.isEmpty())lanes.add(lane);
+            }
+            return;
+        }
+        if(view.isFocusable()&&view.isClickable()){
+            lanes.add(Collections.singletonList(view));return;
+        }
+        if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++)collectHomeLanes(group.getChildAt(i),lanes);
+        }
+    }
+    private boolean moveHomeFocus(View focus,boolean down){
+        if(content==null||!insideHomeContent(focus))return false;
+        List<List<View>> lanes=new ArrayList<>();collectHomeLanes(content,lanes);
+        for(int i=0;i<lanes.size();i++){
+            int column=lanes.get(i).indexOf(focus);
+            if(column<0)continue;
+            int next=HomeFocusPolicy.nextLane(i,down,lanes.size());
+            if(next>=0){List<View> target=lanes.get(next);
+                return focusPoster(target.get(HomeFocusPolicy.column(column,target.size())));
+            }
+            if(!down&&navigationBar!=null)return focusPoster(navigationBar.getChildAt(1));
+            return true;
+        }
+        return false;
+    }
     @Override public boolean dispatchKeyEvent(KeyEvent event){
-        if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN){
-            View focused=getCurrentFocus();
-            if(focused!=null&&focused.getParent()==navigationBar){
-                View hero="home".equals(screen)?root.findViewWithTag("home-primary"):null;
-                if(hero!=null)return focusPoster(hero);
-                List<LinearLayout> rows=new ArrayList<>();posterRows(content,rows);
-                if(!rows.isEmpty())return focusPoster(rows.get(0).getChildAt(0));
+        if(event.getAction()==KeyEvent.ACTION_DOWN && "home".equals(screen)){
+            int key=event.getKeyCode();
+            if(key==KeyEvent.KEYCODE_DPAD_DOWN||key==KeyEvent.KEYCODE_DPAD_UP){
+                View focused=getCurrentFocus();
+                if(focused!=null){
+                    if(key==KeyEvent.KEYCODE_DPAD_DOWN&&focused.getParent()==navigationBar){
+                        View hero=root.findViewWithTag("home-primary");
+                        if(hero!=null)return focusPoster(hero);
+                    }
+                    if(moveHomeFocus(focused,key==KeyEvent.KEYCODE_DPAD_DOWN))return true;
+                }
             }
         }
         return super.dispatchKeyEvent(event);
@@ -487,7 +599,7 @@ public final class MainActivity extends Activity {
         if(returnView!=null){
             generation++;root.removeAllViews();root.addView(returnView);
             screen=returnScreen;content=returnContent;navigationBar=returnNavigation;status=returnStatus;
-            if("home".equals(screen)){addContinueWatching();if(!loadedMovies.isEmpty())updateFeatured(loadedMovies.get(0));}
+            if("home".equals(screen)){addContinueWatching();refreshFeaturedCarousel();}
             View target=returnFocus;returnView=null;
             if(target!=null){
                 View restored=target.getTag()==null?target:root.findViewWithTag(target.getTag());
@@ -688,6 +800,7 @@ public final class MainActivity extends Activity {
     }
     private void refreshHomeExtras(){
         if(!"home".equals(screen)||favoriteSlot==null||recommendSlot==null)return;
+        refreshFeaturedCarousel();
         Object focus=getCurrentFocus()==null?null:getCurrentFocus().getTag();
         List<FarsiPlexTitle> favorites=favoriteItems(),catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
         if(movieSlot!=null)homeRow(movieSlot,"فیلم‌ها","انتخاب‌های کاتالوگ موجود",loadedMovies);
@@ -749,10 +862,15 @@ public final class MainActivity extends Activity {
         else localIo.execute(()->{try(java.io.InputStream in=getContentResolver().openInputStream(uri);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){if(in==null)throw new java.io.IOException();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){if(out.size()+n>262144)throw new java.io.IOException();out.write(b,0,n);}String raw=out.toString("UTF-8");runOnUiThread(()->{if(destroyed||!transferProfile.equals(new ProfileStore(this).active()))return;new AlertDialog.Builder(this).setTitle("دادهٔ فایل با همین پروفایل ادغام شود؟").setMessage("این روش به دادهٔ خصوصی v0.5.1 دسترسی ندارد. فقط فایل خروجی سازگار پذیرفته می‌شود؛ دادهٔ فعلی پاک نمی‌شود.").setNegativeButton("لغو",null).setPositiveButton("ادغام",(d,w)->localIo.execute(()->{try{if(!transferProfile.equals(new ProfileStore(this).active()))return;DataTransfer.importData(raw,snapshot,library);runOnUiThread(()->{if(!destroyed)home();});}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"فایل معتبر یا سازگار نیست؛ کلید و لینک خصوصی وارد نمی‌شود",Toast.LENGTH_LONG).show());}})).show();});}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"خواندن فایل انجام نشد یا بیش از حد بزرگ است",Toast.LENGTH_LONG).show());}});
     }
     @Override protected void onResume(){
-        super.onResume();
+        super.onResume();scheduleHeroRotation();
         if(returnedFromPlayer){returnedFromPlayer=false;if("home".equals(screen))addContinueWatching();}
     }
+    @Override protected void onStop(){
+        heroHandler.removeCallbacks(rotateHero);
+        super.onStop();
+    }
     @Override protected void onDestroy(){
+        heroHandler.removeCallbacks(rotateHero);
         destroyed=true;generation++;localIo.shutdownNow();source.close();images.close();aiResolver.close();super.onDestroy();
     }
 }
