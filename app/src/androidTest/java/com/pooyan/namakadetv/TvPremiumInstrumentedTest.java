@@ -118,8 +118,8 @@ public class TvPremiumInstrumentedTest {
      @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> movies=(java.util.List<FarsiPlexTitle>)field(a,"loadedMovies");
      @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> series=(java.util.List<FarsiPlexTitle>)field(a,"loadedSeries");
      movies.clear();series.clear();
-      FarsiPlexTitle first=new FarsiPlexTitle("https://farsiplex.com/movie/fixture-a/","movie","Fixture A");
-      FarsiPlexTitle second=new FarsiPlexTitle("https://farsiplex.com/tvshow/fixture-b/","series","Fixture B");
+      FarsiPlexTitle first=new FarsiPlexTitle("https://farsiplex.com/movie/fixture-a/","movie","Fixture A");first.poster="test-fixture://poster-a";
+      FarsiPlexTitle second=new FarsiPlexTitle("https://farsiplex.com/tvshow/fixture-b/","series","Fixture B");second.poster="test-fixture://poster-b";
      movies.add(first);series.add(second);
      invoke(a,"refreshFeaturedCarousel",new Class[]{});
      for(int n=0;n<2;n++){
