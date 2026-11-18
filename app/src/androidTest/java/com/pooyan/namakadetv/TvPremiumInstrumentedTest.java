@@ -110,6 +110,10 @@ public class TvPremiumInstrumentedTest {
   /** InputDispatcher navigation from bottom rails back to the hero, plus manual slides. */
   @Test public void zHomeHeroCarouselAndRemoteUpNavigationWork(){
    final LinearLayout[] rails=new LinearLayout[2];
+   LibraryStore library=new LibraryStore(context());
+   String continuePage="https://farsiplex.com/movie/720-focus-fixture/";
+   library.savePlayback("ادامهٔ تماشا","https://example.invalid/720-focus.mp4",continuePage,20000,100000);
+   try{
    android.content.Intent offlineUi=new android.content.Intent(context(),MainActivity.class)
        .putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
    // Keep this final instrumentation screen alive until the runner reports completion.
@@ -117,7 +121,18 @@ public class TvPremiumInstrumentedTest {
     scenario.onActivity(a->{
      set(a,"destroyed",true); // Prevent network callbacks and timer rotation during this fixture.
      LinearLayout content=(LinearLayout)field(a,"content");
-     if(content.getChildCount()>1)content.removeViews(1,content.getChildCount()-1);
+     assertTrue("Home keeps hero and Continue Watching rows",content.getChildCount()>1);
+     if(content.getChildCount()>2)content.removeViews(2,content.getChildCount()-2);
+     View hero=content.getChildAt(0);
+     assertTrue("Hero is visible",hero.getVisibility()==View.VISIBLE);
+     assertTrue("Hero height stays in the tested design range",hero.getLayoutParams().height>=340*hero.getResources().getDisplayMetrics().density);
+     TextView description=(TextView)field(a,"featuredDescription");
+     assertEquals("Persian copy uses first-strong RTL-aware direction",View.TEXT_DIRECTION_FIRST_STRONG,description.getTextDirection());
+     assertTrue("Persian home copy is present",description.getText().toString().contains("پیشنهادی"));
+     View resume=content.findViewWithTag("resume:"+PlaybackResumePolicy.identity("",continuePage));
+     assertNotNull("Continue Watching fixture appears on home",resume);
+     assertTrue("Continue Watching accepts remote focus",resume.isFocusable());
+     assertTrue("Continue Watching focus can be restored",resume.requestFocus());
      @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> movies=(java.util.List<FarsiPlexTitle>)field(a,"loadedMovies");
      @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> series=(java.util.List<FarsiPlexTitle>)field(a,"loadedSeries");
      movies.clear();series.clear();
@@ -138,6 +153,8 @@ public class TvPremiumInstrumentedTest {
     scenario.onActivity(a->assertTrue("UP moves to previous poster row",rails[0].getChildAt(0).isFocused()));
     key(KeyEvent.KEYCODE_DPAD_UP);
     android.util.Log.i("Phase1FocusTest","second UP completed");
+    scenario.onActivity(a->assertSame("UP reaches Continue Watching",a.getCurrentFocus(),((FrameLayout)field(a,"root")).findViewWithTag("resume:"+PlaybackResumePolicy.identity("",continuePage))));
+    key(KeyEvent.KEYCODE_DPAD_UP);
     scenario.onActivity(a->assertEquals("home-primary",a.getCurrentFocus().getTag()));
     key(KeyEvent.KEYCODE_DPAD_LEFT);
     android.util.Log.i("Phase1FocusTest","LEFT carousel selection completed");
@@ -153,6 +170,7 @@ public class TvPremiumInstrumentedTest {
      android.util.Log.i("Phase1FocusTest","navigation focus assertion passed");
     });
     android.util.Log.i("Phase1FocusTest","all focus assertions completed");
+   }finally{library.forget(continuePage,"https://example.invalid/720-focus.mp4");}
   }
   @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){

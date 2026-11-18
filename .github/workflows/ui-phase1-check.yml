@@ -90,7 +90,12 @@ jobs:
           profile: ${{ matrix.profile }}
           disable-animations: true
           emulator-options: -memory 3072 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: gradle --no-daemon connectedDebugAndroidTest
+          script: |
+            if [ "${{ matrix.profile }}" = "tv_720p" ]; then
+              gradle --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.pooyan.namakadetv.TvPremiumInstrumentedTest#zHomeHeroCarouselAndRemoteUpNavigationWork
+            else
+              gradle --no-daemon connectedDebugAndroidTest
+            fi
       - name: Save Android TV instrumented reports
         if: always()
         uses: actions/upload-artifact@v4
