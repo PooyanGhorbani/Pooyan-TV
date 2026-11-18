@@ -82,6 +82,12 @@ jobs:
         with:
           gradle-version: '8.9'
       - run: sudo chmod 666 /dev/kvm
+      - name: Record runner resources before Android TV emulator
+        run: |
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          df -h / /tmp
+          nproc
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -89,8 +95,17 @@ jobs:
           arch: x86
           profile: ${{ matrix.profile }}
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot
           script: gradle --no-daemon connectedDebugAndroidTest
+      - name: Record runner and ADB state after Android TV emulator
+        if: always()
+        run: |
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          df -h / /tmp
+          adb devices -l || true
+          pgrep -a -f 'emulator|qemu' || true
+          sudo dmesg --ctime 2>/dev/null | grep -Ei 'out of memory|oom-kill|killed process|qemu|emulator' | tail -n 80 || true
       - name: Save Android TV instrumented reports
         if: always()
         uses: actions/upload-artifact@v4
