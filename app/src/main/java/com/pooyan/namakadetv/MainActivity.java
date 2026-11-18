@@ -37,6 +37,7 @@ import java.util.Set;
 /** Pooyan TV: provider-neutral cinematic Android TV interface, remote-first. */
 public final class MainActivity extends Activity {
     private static final int BG=0xFF07070A, PANEL=0xFF18181F, TEAL=0xFFE50914, WHITE=0xFFF6F6F6, MUTED=0xFFB3B3BB;
+    static final String EXTRA_OFFLINE_UI_TEST="com.pooyan.namakadetv.extra.OFFLINE_UI_TEST";
     private FrameLayout root;
     private LinearLayout content;
     private TextView status;
@@ -80,9 +81,11 @@ public final class MainActivity extends Activity {
     private String filterKind="", filterGenre="";
     private int filterYear, filterRating;
     private long surpriseCounter;
+    private boolean offlineUiTest;
 
     @Override public void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
+        offlineUiTest=BuildConfig.DEBUG && getIntent().getBooleanExtra(EXTRA_OFFLINE_UI_TEST,false);
         getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
@@ -91,7 +94,7 @@ public final class MainActivity extends Activity {
         streams=new LocalStreams(this);aiResolver=new AiResolverClient(this);
         preferences=ProfileStore.data(this,"pooyan_farsiplex_v04");
         home();
-        root.postDelayed(()->UpdaterActivity.maybeNotify(this),5000);
+        if(!offlineUiTest)root.postDelayed(()->UpdaterActivity.maybeNotify(this),5000);
         if(new ProfileStore(this).picker())root.post(()->chooseProfile(false));
     }
     private int dp(float v){return TvUi.dp(this,v);}
@@ -335,6 +338,7 @@ public final class MainActivity extends Activity {
         if(!cache.isEmpty()){
             row.removeAllViews();for(int i=0;i<Math.min(cache.size(),18);i++)card(row,cache.get(i));return;
         }
+        if(offlineUiTest)return;
         source.list(kind,1,(list,error)->{
             if(destroyed || token!=generation || !"home".equals(screen))return;
             row.removeAllViews();

@@ -110,7 +110,9 @@ public class TvPremiumInstrumentedTest {
   /** InputDispatcher navigation from bottom rails back to the hero, plus manual slides. */
   @Test public void homeHeroCarouselAndRemoteUpNavigationWork(){
    final LinearLayout[] rails=new LinearLayout[2];
-   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+   android.content.Intent offlineUi=new android.content.Intent(context(),MainActivity.class)
+       .putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
+   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offlineUi)){
     scenario.onActivity(a->{
      set(a,"destroyed",true); // Prevent network callbacks and timer rotation during this fixture.
      LinearLayout content=(LinearLayout)field(a,"content");
