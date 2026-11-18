@@ -425,7 +425,7 @@ public final class MainActivity extends Activity {
         return hero!=null?focusPoster(hero):navigationBar!=null&&focusPoster(navigationBar.getChildAt(1));
     }
     private boolean insideHomeContent(View view){
-        android.view.ViewParent parent=view;
+        android.view.ViewParent parent=view.getParent();
         while(parent!=null){if(parent==content)return true;parent=parent.getParent();}
         return false;
     }
