@@ -440,7 +440,14 @@ public final class MainActivity extends Activity {
     private boolean focusPoster(View target){
         if(target==null)return false;
         if(!target.requestFocus())return false;
-        target.requestRectangleOnScreen(new android.graphics.Rect(0,0,target.getWidth(),target.getHeight()),false);
+        android.view.ViewParent parent=target.getParent();
+        while(parent!=null){
+            if(parent instanceof ScrollView){
+                target.requestRectangleOnScreen(new android.graphics.Rect(0,0,target.getWidth(),target.getHeight()),false);
+                break;
+            }
+            parent=parent.getParent();
+        }
         return true;
     }
     private void posterRows(View view,List<LinearLayout> rows){
