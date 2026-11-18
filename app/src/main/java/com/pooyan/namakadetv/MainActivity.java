@@ -1049,8 +1049,6 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onDestroy(){
         heroHandler.removeCallbacks(rotateHero);
-        destroyed=true;generation++;
-        if(!offlineUiTest){localIo.shutdownNow();source.close();images.close();aiResolver.close();}
-        super.onDestroy();
+        destroyed=true;generation++;localIo.shutdownNow();source.close();images.close();aiResolver.close();super.onDestroy();
     }
 }
