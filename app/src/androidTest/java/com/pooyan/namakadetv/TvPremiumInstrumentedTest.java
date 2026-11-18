@@ -117,8 +117,7 @@ public class TvPremiumInstrumentedTest {
    try{
    android.content.Intent offlineUi=new android.content.Intent(context(),MainActivity.class)
        .putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
-   // Keep this final instrumentation screen alive until the runner reports completion.
-   ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offlineUi);
+   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offlineUi)){
     scenario.onActivity(a->{
      set(a,"destroyed",true); // Prevent network callbacks and timer rotation during this fixture.
      LinearLayout content=(LinearLayout)field(a,"content");
@@ -171,6 +170,7 @@ public class TvPremiumInstrumentedTest {
      android.util.Log.i("Phase1FocusTest","navigation focus assertion passed");
     });
     android.util.Log.i("Phase1FocusTest","all focus assertions completed");
+   }
    }finally{library.forget(continuePage,"https://example.invalid/720-focus.mp4");}
   }
   @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
