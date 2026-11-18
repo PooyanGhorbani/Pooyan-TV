@@ -8,6 +8,7 @@ on:
       - 'settings.gradle'
       - 'build.gradle'
       - 'gradle.properties'
+      - 'tools/ci/**'
       - '.github/workflows/ui-phase1-check.yml'
   workflow_dispatch:
 
