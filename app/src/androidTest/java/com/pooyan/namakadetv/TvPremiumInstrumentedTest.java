@@ -54,6 +54,7 @@ public class TvPremiumInstrumentedTest {
   String page="https://farsiplex.com/movie/detail-cinematic-fixture/";
   String media="https://example.invalid/cinematic-fixture.mp4";
   LibraryStore library=new LibraryStore(context());library.savePlayback("فیلم آزمایشی",media,page,45000,100000);
+  final View[] previewRoot=new View[1];
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(new android.content.Intent(context(),MainActivity.class)
       .putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true))){
    scenario.onActivity(a->{
@@ -72,9 +73,12 @@ public class TvPremiumInstrumentedTest {
     assertTrue("Play action remains focusable",root.findViewWithTag("detail-primary").isFocusable());
     assertNotNull("Related titles use the existing catalog",root.findViewWithTag("poster-row"));
     assertTrue(root.findViewWithTag("detail-primary").requestFocus());
+    previewRoot[0]=root;
    });
    InstrumentationRegistry.getInstrumentation().waitForIdleSync();
-   android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);
+   assertNotNull(previewRoot[0]);assertTrue(previewRoot[0].getWidth()>0&&previewRoot[0].getHeight()>0);
+   android.graphics.Bitmap image=android.graphics.Bitmap.createBitmap(previewRoot[0].getWidth(),previewRoot[0].getHeight(),android.graphics.Bitmap.Config.ARGB_8888);
+   previewRoot[0].draw(new android.graphics.Canvas(image));
    java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,bytes));image.recycle();
    String encoded=android.util.Base64.encodeToString(bytes.toByteArray(),android.util.Base64.NO_WRAP);int chunkSize=2600;
    android.util.Log.i("DetailPreview","PNG_BEGIN chunks="+((encoded.length()+chunkSize-1)/chunkSize)+" bytes="+bytes.size());
@@ -95,7 +99,9 @@ public class TvPremiumInstrumentedTest {
     FrameLayout root=(FrameLayout)field(a,"root");assertNotNull("First season is available",root.findViewWithTag("detail-season-1"));
     assertNotNull("Only first-season episode is rendered",root.findViewWithTag(s1));assertNull(root.findViewWithTag(s2));
     assertTrue(root.findViewWithTag("detail-season-2").requestFocus());
+    assertEquals("Focus is on requested season before Select","detail-season-2",a.getCurrentFocus().getTag());
    });
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();
    key(KeyEvent.KEYCODE_DPAD_CENTER);
    scenario.onActivity(a->{FrameLayout root=(FrameLayout)field(a,"root");android.util.Log.i("DetailSeasonTest","season="+field(a,"selectedDetailSeason")+" focus="+(a.getCurrentFocus()==null?"null":a.getCurrentFocus().getTag()));assertEquals("DPAD Select activates the focused season",2,field(a,"selectedDetailSeason"));assertNotNull("Second-season episode appears after selecting its season",root.findViewWithTag(s2));assertNull(root.findViewWithTag(s1));assertEquals("detail-season-2",a.getCurrentFocus().getTag());});
    scenario.onActivity(a->assertTrue(((FrameLayout)field(a,"root")).findViewWithTag(s2).requestFocus()));
