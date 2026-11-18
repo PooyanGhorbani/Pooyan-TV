@@ -12,10 +12,10 @@ if [[ -z "$emulator_bin" || ! -x "$emulator_bin" ]]; then
 fi
 real_bin="${emulator_bin}.pooyan-real"
 if [[ ! -e "$real_bin" ]]; then mv "$emulator_bin" "$real_bin"; fi
-cat > "$emulator_bin" <<'WRAPPER'
+cat > "$emulator_bin" <<WRAPPER
 #!/usr/bin/env bash
 set -uo pipefail
-  exec "${BASH_SOURCE[0]}.pooyan-real" "$@" >> "${POOYAN_DIAGNOSTICS_DIR:?}/emulator-output.log" 2>&1
+exec "$real_bin" "\$@" >> "$emulator_output" 2>&1
 WRAPPER
 chmod +x "$emulator_bin"
 echo "Wrapped emulator executable: $emulator_bin" >> "$emulator_output"
