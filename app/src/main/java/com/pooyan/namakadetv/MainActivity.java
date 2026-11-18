@@ -204,11 +204,11 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams indicatorParams=lp(-1,32);indicatorParams.topMargin=dp(6);
         story.addView(heroIndicator,indicatorParams);
         content.addView(hero,lp(-1,340));
-        content.addView(button("🎲 سورپرایزم کن! · پیشنهاد برای امشب",false,this::surpriseMe),lp(395,48));
         refreshFeaturedCarousel();
         continueSlot=vertical();content.addView(continueSlot,lp(-1,-2));
         addContinueWatching();
         continueSlot.setVisibility(preferences.getBoolean("home_continue",true)?View.VISIBLE:View.GONE);
+        content.addView(button("🎲 سورپرایزم کن! · پیشنهاد برای امشب",false,this::surpriseMe),lp(395,48));
         title("تازه‌اضافه‌شده‌ها","");rail("movie");
         movieSlot=vertical();content.addView(movieSlot,lp(-1,-2));
         favoriteSlot=vertical();content.addView(favoriteSlot,lp(-1,-2));
