@@ -30,7 +30,7 @@
         <activity android:name="com.pooyan.namakadetv.MaintenanceActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name="com.pooyan.namakadetv.BackupActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity
-            android:name="com.pooyan.namakadetv.PlayerActivity
+            android:name="com.pooyan.namakadetv.PlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
         <activity
