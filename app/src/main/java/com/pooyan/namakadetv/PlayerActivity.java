@@ -163,7 +163,7 @@ public final class PlayerActivity extends Activity {
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.VERTICAL);
         head.setPadding(dp(28), dp(18), dp(28), dp(12));
-        head.setBackground(TvUi.bg(0xE3172235, 12, this));
+        head.setBackground(TvUi.bg(0xCC101016, 18, this));
         topPanel = head;
         titleView = TvUi.text(this, name, 19, TvUi.TEXT, true);
         titleView.setSingleLine(true);
@@ -178,7 +178,7 @@ public final class PlayerActivity extends Activity {
         controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.HORIZONTAL);
         controls.setPadding(dp(20), dp(14), dp(20), dp(14));
-        controls.setBackground(TvUi.bg(0xED132137, 14, this));
+        controls.setBackground(TvUi.bg(0xE6101016, 24, this));
         HorizontalScrollView scroller = new HorizontalScrollView(this);
         scroller.setHorizontalScrollBarEnabled(false);
         scroller.setFillViewport(true);

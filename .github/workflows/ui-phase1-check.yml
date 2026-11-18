@@ -1,0 +1,101 @@
+name: Pooyan TV UI Phase 1 - validation only (NO release)
+
+on:
+  push:
+    branches: [ui/phase1]
+    paths:
+      - 'app/**'
+      - '.github/workflows/ui-phase1-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-phase1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-lint-unit:
+    name: Build / JVM / Lint / Worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: yes | sdkmanager --licenses > /dev/null || true
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolver Worker tests (no deployment)
+        run: node --test resolver-worker/resolver.test.mjs
+      - name: Build debug, JVM unit tests and Android lint
+        run: gradle --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug
+      - name: Save unsigned dev debug APK for inspection only (do NOT install over stable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-unsigned-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Save test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-unit-lint-reports
+          path: |
+            app/build/reports/tests/**
+            app/build/test-results/**
+            app/build/reports/lint-results-*
+          if-no-files-found: ignore
+
+  android-tv-dpad:
+    name: Android TV D-pad / ${{ matrix.profile }}
+    needs: build-lint-unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [tv_720p, tv_1080p]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: ${{ matrix.profile }}
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: gradle --no-daemon connectedDebugAndroidTest
+      - name: Save Android TV instrumented reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-tv-${{ matrix.profile }}-reports
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+          if-no-files-found: ignore
