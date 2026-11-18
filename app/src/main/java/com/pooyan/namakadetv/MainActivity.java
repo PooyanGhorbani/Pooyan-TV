@@ -65,10 +65,12 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
+        SourceRules.initialize(this);
         source=new UnifiedRepository(this);images=new CatalogImages(this);
         streams=new LocalStreams(this);aiResolver=new AiResolverClient(this);
         preferences=ProfileStore.data(this,"pooyan_farsiplex_v04");
         home();
+        root.postDelayed(()->UpdaterActivity.maybeNotify(this),5000);
         if(new ProfileStore(this).picker())root.post(()->chooseProfile(false));
     }
     private int dp(float v){return TvUi.dp(this,v);}
@@ -402,6 +404,9 @@ public final class MainActivity extends Activity {
         info.addView(text(("movie".equals(item.kind)?"فیلم":"series".equals(item.kind)?"سریال":"قسمت سریال")+"  ·  "+item.year,15,0xFFFF8288,true),lp(-1,39));
         info.addView(text(item.name,40,WHITE,true),lp(-1,-2));
         if(!item.genre.isEmpty())info.addView(text(item.genre,14,MUTED,false),lp(-1,34));
+        if(!item.rating.isEmpty())info.addView(text("امتیاز منتشرشده: "+item.rating,14,0xFFFFD68A,false),lp(-1,30));
+        if(!item.cast.isEmpty())info.addView(text("بازیگران: "+item.cast,13,MUTED,false),lp(-1,-2));
+        if(!item.runtime.isEmpty())info.addView(text("مدت اعلام‌شده: "+item.runtime,13,MUTED,false),lp(-1,28));
         TextView summary=text(item.description.isEmpty()?"اطلاعات تکمیلی در حال دریافت است…":item.description,16,0xFFE0E0E3,false);
         summary.setMaxLines(8);LinearLayout.LayoutParams sp=lp(-1,-2);sp.topMargin=dp(17);info.addView(summary,sp);
         TextView rights=text("اطلاعات و دسترسی به محتوا ممکن است با تغییر سرویس‌ها متفاوت باشد.",12,MUTED,false);
@@ -706,14 +711,14 @@ public final class MainActivity extends Activity {
     }
     private void settings(){
         SharedPreferences playerPrefs=ProfileStore.data(this,"player_preferences");ProfileStore profiles=new ProfileStore(this);
-        String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی"};
+        String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی","نگهداری، آپدیت GitHub و پشتیبان خانوادگی"};
         new AlertDialog.Builder(this).setTitle("تنظیمات محلی").setItems(options,(d,n)->{switch(n){
             case 0:chooseProfile(true);break;case 1:profiles.picker(!profiles.picker());settings();break;case 2:historyScreen();break;
             case 3:playerPrefs.edit().putBoolean("autoplay",!playerPrefs.getBoolean("autoplay",true)).apply();settings();break;
             case 4:new AlertDialog.Builder(this).setTitle("زمان شمارش").setItems(new String[]{"۵ ثانیه","۱۰ ثانیه","۲۰ ثانیه"},(a,i)->playerPrefs.edit().putInt("countdown",new int[]{5,10,20}[i]).apply()).show();break;
             case 5:new AlertDialog.Builder(this).setTitle("درصد تماشا برای پایان").setItems(new String[]{"۹۰٪","۹۵٪","۹۷٪","۹۹٪"},(a,i)->new LibraryStore(this).completion(new int[]{90,95,97,99}[i])).show();break;
             case 6:new AlertDialog.Builder(this).setTitle("زبان سرویس گفتار").setItems(new String[]{"فارسی","English"},(a,i)->playerPrefs.edit().putString("voice",i==0?"fa-IR":"en-US").apply()).show();break;
-            case 7:transfer(false);break;case 8:transfer(true);break;case 9:configureAI(null);break;
+            case 7:transfer(false);break;case 8:transfer(true);break;case 9:configureAI(null);break;case 10:startActivity(new Intent(this,MaintenanceActivity.class));break;
         }}).setNegativeButton("بازگشت",null).show();
     }
     private void historyScreen(){

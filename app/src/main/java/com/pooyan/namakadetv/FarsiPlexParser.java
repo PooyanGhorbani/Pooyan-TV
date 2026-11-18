@@ -51,6 +51,8 @@ public final class FarsiPlexParser {
         }
         if(title.isEmpty())title=slugLabel(trusted);
         FarsiPlexTitle t=new FarsiPlexTitle(trusted,kind,title);
+        PublicTitleMetadata.Details meta=PublicTitleMetadata.from(d);
+        t.rating=meta.rating;t.cast=meta.cast;t.runtime=meta.runtime;
         for(Element alias:d.select("meta[property=og:title],meta[name=title],.original-title")){
             String text=alias.hasAttr("content")?alias.attr("content"):alias.text();if(!text.isEmpty()&&!text.equals(title))t.aliases.add(text);
         }

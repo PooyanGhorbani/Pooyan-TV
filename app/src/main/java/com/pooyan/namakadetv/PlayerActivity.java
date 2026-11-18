@@ -157,8 +157,8 @@ public final class PlayerActivity extends Activity {
         playerView.setShutterBackgroundColor(Color.BLACK);
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         root.addView(playerView, new FrameLayout.LayoutParams(-1, -1));
-        captions=new SubtitleView(this);captions.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG);captions.setBottomPaddingFraction(.14f);
-        captions.setFractionalTextSize(.0533f*profilePrefs.getFloat("subtitle_size",1f));root.addView(captions,new FrameLayout.LayoutParams(-1,-1));
+        captions=new SubtitleView(this);captions.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG);captions.setBottomPaddingFraction(profilePrefs.getFloat("subtitle_position",.14f));
+        captions.setFractionalTextSize(.0533f*profilePrefs.getFloat("subtitle_size",1f));applySubtitleStyle(profilePrefs.getInt("subtitle_style",0));root.addView(captions,new FrameLayout.LayoutParams(-1,-1));
 
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.VERTICAL);
@@ -220,6 +220,8 @@ public final class PlayerActivity extends Activity {
         addControl("+ زیرنویس", this::addSubtitle);
         addControl("اندازهٔ زیرنویس",this::subtitleSize);
         addControl("تأخیر زیرنویس",this::subtitleDelay);
+        addControl("جای زیرنویس",this::subtitlePosition);
+        addControl("سبک زیرنویس",this::subtitleStyle);
         addControl("قسمت بعد",()->showNext(true));
         addControl("اندازه تصویر", () -> {
             zoomMode = !zoomMode;
@@ -543,6 +545,23 @@ public final class PlayerActivity extends Activity {
     }
     private AlertDialog subtitleSize(){return new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("اندازهٔ زیرنویس این پروفایل").setItems(new String[]{"کوچک","معمولی","بزرگ","خیلی بزرگ"},(d,i)->{float value=new float[]{.8f,1f,1.25f,1.5f}[i];profilePrefs.edit().putFloat("subtitle_size",value).apply();captions.setFractionalTextSize(.0533f*value);}).show();}
     private AlertDialog subtitleDelay(){return new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey).setTitle("تأخیر مثبت؛ جلو انداختن پشتیبانی نمی‌شود").setItems(new String[]{"بدون تأخیر","نیم ثانیه","۱ ثانیه","۲ ثانیه","۳ ثانیه","۵ ثانیه"},(d,i)->{profilePrefs.edit().putInt("subtitle_delay",new int[]{0,500,1000,2000,3000,5000}[i]).apply();cueQueue.clear();captions.setCues(java.util.Collections.emptyList());}).show();}
+    private AlertDialog subtitlePosition(){return new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+        .setTitle("موقعیت زیرنویس").setItems(new String[]{"پایین","معمولی","بالا"},(d,i)->{
+            float value=new float[]{.05f,.14f,.26f}[i];profilePrefs.edit().putFloat("subtitle_position",value).apply();captions.setBottomPaddingFraction(value);
+        }).show();}
+    private void applySubtitleStyle(int style){
+        if(captions==null)return;
+        if(style==0){captions.setApplyEmbeddedStyles(true);captions.setStyle(androidx.media3.ui.CaptionStyleCompat.DEFAULT);return;}
+        captions.setApplyEmbeddedStyles(false);
+        int edge=style==1?androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE:androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE;
+        int back=style==2?0xB9000000:android.graphics.Color.TRANSPARENT;
+        captions.setStyle(new androidx.media3.ui.CaptionStyleCompat(android.graphics.Color.WHITE,back,
+            android.graphics.Color.TRANSPARENT,edge,android.graphics.Color.BLACK,null));
+    }
+    private AlertDialog subtitleStyle(){return new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+        .setTitle("شکل زیرنویس").setItems(new String[]{"حالت اصلی فیلم","سفید با خط دور مشکی","سفید با زمینهٔ تیره"},(d,i)->{
+            profilePrefs.edit().putInt("subtitle_style",i).apply();applySubtitleStyle(i);
+        }).show();}
     private void failover(SourceHealth.Failure reason){
         if(switching||stopping||isFinishing())return;
         cancelNext();if(currentCandidate!=null)SourceHealth.failed(currentCandidate.url,reason,android.os.SystemClock.elapsedRealtime());

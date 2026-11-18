@@ -19,7 +19,10 @@ public final class CatalogImages {
     private final LruCache<String,Bitmap> memory=new LruCache<String,Bitmap>(14*1024){
         @Override protected int sizeOf(String k,Bitmap b){return Math.max(1,b.getByteCount()/1024);}
     };
-    public CatalogImages(Activity a){activity=a;}
+    private static final java.util.Set<CatalogImages> INSTANCES =
+        java.util.Collections.newSetFromMap(new java.util.WeakHashMap<CatalogImages,Boolean>());
+    public CatalogImages(Activity a){activity=a;synchronized(INSTANCES){INSTANCES.add(this);}}
+    public static void clearAllMemory(){synchronized(INSTANCES){for(CatalogImages image:INSTANCES)image.memory.evictAll();}}
     private static boolean isPoster(String url){return ImageUrlPolicy.allowed(url);}
     private final java.util.Set<String> inFlight=new java.util.HashSet<>();
     private final java.util.Map<String,Long> failedUntil=new java.util.HashMap<>();
