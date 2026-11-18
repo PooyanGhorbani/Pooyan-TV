@@ -60,4 +60,10 @@ gradle "${gradle_args[@]}" 2>&1 | tee "$diag_dir/instrumentation-gradle.log"
 gradle_status=${PIPESTATUS[0]}
 set -e
 printf 'finished=%s\ngradle_exit=%s\n' "$(date --iso-8601=ns)" "$gradle_status" >> "$diag_dir/test-metadata.log"
+if [[ "$gradle_status" -eq 0 && ( "$mode" == "full" || "$mode" == "logical-720" ) ]]; then
+  screenshot_path='/sdcard/Android/data/com.pooyan.namakadetv.dev070/files/emulator-detail.png'
+  adb -s emulator-5554 pull "$screenshot_path" "$diag_dir/emulator-detail.png" >> "$diag_dir/screenshot-pull.log" 2>&1 || {
+    printf 'Screenshot pull failed; see %s/screenshot-pull.log\n' "$diag_dir" | tee -a "$diag_dir/test-metadata.log"
+  }
+fi
 exit "$gradle_status"

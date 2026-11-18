@@ -527,6 +527,8 @@ public final class MainActivity extends Activity {
     }
 
     private String returnEpisodeUrl="",renderedDetailUrl="";
+    private String seasonSeriesUrl="";
+    private int selectedDetailSeason=Integer.MIN_VALUE;
     private View returnView,returnFocus;
     private LinearLayout returnContent,returnNavigation;
     private TextView returnStatus;
@@ -547,111 +549,169 @@ public final class MainActivity extends Activity {
         });
     }
     private void showDetail(FarsiPlexTitle item,boolean complete){
-        Object focusTag="detail".equals(screen)&&item.url.equals(renderedDetailUrl)&&getCurrentFocus()!=null?getCurrentFocus().getTag():null;
+        boolean sameDetail="detail".equals(screen)&&item.url.equals(renderedDetailUrl);
+        Object focusTag=sameDetail&&getCurrentFocus()!=null?getCurrentFocus().getTag():null;
+        if("series".equals(item.kind)&&!item.url.equals(seasonSeriesUrl)){
+            seasonSeriesUrl=item.url;selectedDetailSeason=Integer.MIN_VALUE;
+        }
         renderedDetailUrl=item.url;
         begin("detail");
-        LinearLayout presentation=horizontal();presentation.setGravity(Gravity.TOP);
-        ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        poster.setBackground(shape(PANEL,14,false));presentation.addView(poster,lp(258,363));
-        if(!item.poster.isEmpty())images.load(poster,item.poster);
-        gap(presentation,31);
-        LinearLayout info=vertical();presentation.addView(info,new LinearLayout.LayoutParams(0,-2,1));
-        info.addView(text(("movie".equals(item.kind)?"فیلم":"series".equals(item.kind)?"سریال":"قسمت سریال")+"  ·  "+item.year,15,0xFFFF8288,true),lp(-1,39));
-        info.addView(text(item.name,40,WHITE,true),lp(-1,-2));
-        if(!item.genre.isEmpty())info.addView(text(item.genre,14,MUTED,false),lp(-1,34));
-        if(!item.rating.isEmpty())info.addView(text("امتیاز منتشرشده: "+item.rating,14,0xFFFFD68A,false),lp(-1,30));
-        if(!item.cast.isEmpty())info.addView(text("بازیگران: "+item.cast,13,MUTED,false),lp(-1,-2));
-        if(!item.runtime.isEmpty())info.addView(text("مدت اعلام‌شده: "+item.runtime,13,MUTED,false),lp(-1,28));
-        TextView summary=text(item.description.isEmpty()?"اطلاعات تکمیلی در حال دریافت است…":item.description,16,0xFFE0E0E3,false);
-        summary.setMaxLines(8);LinearLayout.LayoutParams sp=lp(-1,-2);sp.topMargin=dp(17);info.addView(summary,sp);
-        TextView rights=text("اطلاعات و دسترسی به محتوا ممکن است با تغییر سرویس‌ها متفاوت باشد.",12,MUTED,false);
-        LinearLayout.LayoutParams rp=lp(-1,31);rp.topMargin=dp(14);info.addView(rights,rp);
-        LinearLayout controls=horizontal();detailControls=controls;LinearLayout.LayoutParams cp=lp(-1,62);cp.topMargin=dp(8);info.addView(controls,cp);
+
+        FrameLayout heroFrame=new FrameLayout(this);
+        heroFrame.setTag("detail-hero");heroFrame.setBackgroundColor(0xFF10131D);
+        ImageView backdrop=new ImageView(this);backdrop.setTag("detail-backdrop");
+        backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);backdrop.setAlpha(.42f);
+        if(!item.poster.isEmpty())images.load(backdrop,item.poster);
+        heroFrame.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
+        View scrim=new View(this);
+        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{0xFF090B12,0xF2090B12,0xC8090B12,0x66090B12,0x18090B12}));
+        heroFrame.addView(scrim,new FrameLayout.LayoutParams(-1,-1));
+        View bottomFade=new View(this);
+        bottomFade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{0x00090B12,0x22090B12,0xFF090B12}));
+        heroFrame.addView(bottomFade,new FrameLayout.LayoutParams(-1,-1));
+
+        LinearLayout hero=horizontal();hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setPadding(dp(30),dp(15),dp(28),dp(17));
+        heroFrame.addView(hero,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout infoPanel=vertical();infoPanel.setGravity(Gravity.CENTER_VERTICAL);
+        hero.addView(infoPanel,new LinearLayout.LayoutParams(0,-1,1));
+
+        String kind="movie".equals(item.kind)?"فیلم":"series".equals(item.kind)?"سریال":"قسمت سریال";
+        StringBuilder metadata=new StringBuilder(kind);
+        if(!item.genre.isEmpty())metadata.append("  ·  ").append(item.genre);
+        if(!item.year.isEmpty())metadata.append("  ·  ").append(item.year);
+        if(!item.rating.isEmpty())metadata.append("  ·  ★ ").append(item.rating);
+        TextView eyebrow=text(metadata.toString(),14,0xFFFDC977,true);
+        eyebrow.setTag("detail-metadata");eyebrow.setMaxLines(1);eyebrow.setEllipsize(TextUtils.TruncateAt.END);
+        infoPanel.addView(eyebrow,lp(-1,31));
+        TextView heading=text(item.name,36,0xFFF7F8FF,true);
+        heading.setTag("detail-title");heading.setMaxLines(2);heading.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams headingParams=lp(-1,-2);headingParams.bottomMargin=dp(8);infoPanel.addView(heading,headingParams);
+        String supporting=item.description;
+        if(!item.cast.isEmpty())supporting+=(supporting.isEmpty()?"":"\n")+"بازیگران: "+item.cast;
+        if(!item.runtime.isEmpty())supporting+=(supporting.isEmpty()?"":"   ·   ")+"مدت: "+item.runtime;
+        if(supporting.isEmpty())supporting=complete?"توضیحات تکمیلی برای این عنوان در کاتالوگ ثبت نشده است.":"در حال دریافت اطلاعات عنوان…";
+        TextView summary=text(supporting,15,0xFFD3D7E0,false);
+        summary.setTag("detail-description");summary.setMaxLines(3);summary.setEllipsize(TextUtils.TruncateAt.END);
+        infoPanel.addView(summary,lp(-1,62));
+
+        LibraryStore library=new LibraryStore(this);
+        LibraryStore.Entry resume=null;
+        for(LibraryStore.Entry entry:library.resumeList())if(entry.pageUrl.equals(item.url)){resume=entry;break;}
+        boolean completed=false;
+        for(LibraryStore.Entry entry:library.completed())if(entry.pageUrl.equals(item.url)){completed=true;break;}
+        if(resume!=null){
+            TextView watchState=text("ادامهٔ تماشا  ·  "+PlaybackResumePolicy.time(resume.positionMs),13,0xFFFDC977,true);
+            watchState.setTag("detail-watch-state");LinearLayout.LayoutParams stateParams=lp(-1,28);stateParams.topMargin=dp(3);infoPanel.addView(watchState,stateParams);
+            android.widget.ProgressBar progress=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+            progress.setTag("detail-progress");progress.setMax(1000);
+            if(resume.durationMs>0)progress.setProgress((int)Math.min(1000,resume.positionMs*1000/resume.durationMs));
+            progress.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFE92A42));
+            progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x66343B4C));
+            infoPanel.addView(progress,lp(230,5));
+        }else if(completed){
+            TextView watched=text("✓  تماشا شده",13,0xFF99D6AD,true);
+            watched.setTag("detail-watch-state");infoPanel.addView(watched,lp(-1,28));
+        }
+
+        LinearLayout controls=horizontal();detailControls=controls;controls.setTag("detail-actions");
+        LinearLayout.LayoutParams cp=lp(-1,61);cp.topMargin=dp(10);infoPanel.addView(controls,cp);
         String key="farsiplex:"+item.url;
         String custom=streams.get(key);
         String url=custom!=null?custom:item.publicStream;
-        if(url!=null && !url.isEmpty())controls.addView(button("▶  پخش",true,()->play(item.name,url,item.url)),lp(145,53));
-        else controls.addView(button("+  افزودن لینک مجاز",true,()->addStream(item)),lp(206,53));
-        if(url==null || url.isEmpty()){
-            TextView noMedia=text(complete?("series".equals(item.kind)?"یک قسمت را انتخاب کن.":item.playbackError.isEmpty()?"منبع پخش تأیید نشده است؛ بعداً دوباره امتحان کن.":item.playbackError):"در حال بررسی امکان پخش…",13,0xFFF2CA8F,false);
-            LinearLayout.LayoutParams nm=lp(-1,-2);nm.topMargin=dp(6);info.addView(noMedia,nm);
+        String primaryLabel=url!=null&&!url.isEmpty()?(resume!=null?"▶  ادامهٔ تماشا":"▶  پخش"):
+            ("series".equals(item.kind)?"انتخاب قسمت":"+  افزودن لینک مجاز");
+        if(url!=null&&!url.isEmpty())controls.addView(button(primaryLabel,true,()->play(item.name,url,item.url)),lp(190,53));
+        else controls.addView(button(primaryLabel,true,()->{
+            if("series".equals(item.kind)){
+                View first=root.findViewWithTag("detail-season-"+selectedDetailSeason);
+                if(first==null&&!item.episodes.isEmpty())first=root.findViewWithTag(item.episodes.get(0).url);
+                if(first!=null)focusPoster(first);else info("فهرست قسمت‌ها در دسترس نیست.");
+            }else addStream(item);
+        }),lp("series".equals(item.kind)?190:220,53));
+        if((url==null||url.isEmpty())&&!("series".equals(item.kind))){
+            TextView noMedia=text(complete?(item.playbackError.isEmpty()?"منبع پخش برای این عنوان تأیید نشده است.":item.playbackError):"در حال بررسی امکان پخش…",12,0xFFF2CA8F,false);
+            noMedia.setTag("detail-playback-status");LinearLayout.LayoutParams nm=lp(-1,-2);nm.topMargin=dp(2);infoPanel.addView(noMedia,nm);
         }
-        // AI search is opt-in and uses a separately deployed Worker. No API key in Android.
         if((url==null||url.isEmpty())&&NamakadeCatalog.safeUrl(item.url).isEmpty()){
-            LinearLayout aiActions=horizontal();
-            LinearLayout.LayoutParams aiLayout=lp(-1,60);aiLayout.topMargin=dp(11);info.addView(aiActions,aiLayout);
-            aiActions.addView(button("بررسی منبع جایگزین",false,()->resolveWithAI(item)),lp(247,50));
+            LinearLayout aiActions=horizontal();LinearLayout.LayoutParams aiLayout=lp(-1,54);aiLayout.topMargin=dp(5);infoPanel.addView(aiActions,aiLayout);
+            aiActions.addView(button("بررسی منبع جایگزین",false,()->resolveWithAI(item)),lp(247,48));
         }
         controls.getChildAt(0).setTag("detail-primary");
         gap(controls,9);
         controls.addView(button(isFavorite(item)?"♥ حذف علاقه‌مندی":"♡ علاقه‌مندی",false,()->{
             toggleFavorite(item);showDetail(item,complete);
-        }),lp(183,53));
+        }),lp(165,53));
         controls.getChildAt(2).setTag("detail-favorite");
         gap(controls,9);
         controls.addView(button("بازگشت",false,this::backToList),lp(112,53));
-        content.addView(presentation,lp(-1,-2));
-        if(controls.getChildCount()>0)controls.getChildAt(0).requestFocus();
+
+        ImageView poster=new ImageView(this);poster.setTag("detail-poster");poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        FrameLayout posterFrame=new FrameLayout(this);posterFrame.setBackground(shape(0xFF181C27,13,false));posterFrame.setClipToOutline(true);
+        posterFrame.addView(poster,new FrameLayout.LayoutParams(-1,-1));
+        if(!item.poster.isEmpty())images.load(poster,item.poster);
+        LinearLayout.LayoutParams posterParams=lp(205,292);posterParams.leftMargin=dp(22);hero.addView(posterFrame,posterParams);
+        LinearLayout.LayoutParams heroLayout=lp(-1,"series".equals(item.kind)?372:390);
+        heroLayout.bottomMargin=dp(12);content.addView(heroFrame,heroLayout);
+
         if("series".equals(item.kind)){
             int newly=complete?SeriesTracker.observe(this,item.url,item.episodes.size()):0;
-            title("قسمت‌ها",complete?(newly>0?newly+" قسمت جدید از آخرین بازدید":
-                "قسمت موردنظرت را انتخاب کن"):"در حال دریافت قسمت‌ها…");
-            LibraryStore watchedLibrary=new LibraryStore(this);
-            List<LibraryStore.Entry> episodesCompleted=watchedLibrary.completed();
-            List<LibraryStore.Entry> episodesWatched=watchedLibrary.watched();
-            List<LibraryStore.Entry> episodesResume=watchedLibrary.resumeList();
-            if(complete && item.episodes.isEmpty())content.addView(text("فهرست قسمت‌ها در صفحهٔ عمومی دریافت نشد.",15,MUTED,false),lp(-1,50));
-            for(FarsiPlexTitle ep:item.episodes){
-                String epKey="farsiplex:"+ep.url;
-                String stream=streams.get(epKey);
-                LinearLayout episodeRow=horizontal();episodeRow.setPadding(dp(9),dp(5),dp(12),dp(5));
-                episodeRow.setTag(ep.url);episodeRow.setFocusable(true);episodeRow.setClickable(true);
-                episodeRow.setOnKeyListener((v,k,e)->{
-                    if(TvUi.activate(v,k,e))return true;
-                    if(e.getAction()!=KeyEvent.ACTION_DOWN)return false;
-                    if(k==KeyEvent.KEYCODE_DPAD_UP||k==KeyEvent.KEYCODE_DPAD_DOWN){
-                        int step=k==KeyEvent.KEYCODE_DPAD_DOWN?1:-1;
-                        for(int n=content.indexOfChild(v)+step;n>=0&&n<content.getChildCount();n+=step){
-                            View next=content.getChildAt(n);if(next.isFocusable())return focusPoster(next);
-                        }
-                        if(step<0)return focusPoster(detailControls.getChildAt(0));
-                        return true;
-                    }return false;
-                });
-                episodeRow.setBackground(shape(PANEL,TvUi.RADIUS_CARD,false));
-                ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                cover.setBackground(shape(0xFF28282F,7,false));
-                episodeRow.addView(cover,lp(105,73));
-                if(!ep.poster.isEmpty())images.load(cover,ep.poster);
-                gap(episodeRow,17);
-                LinearLayout epText=vertical();
-                epText.addView(text(ep.name,17,WHITE,true),lp(-1,43));
-                String episodeState=SeriesTracker.state(ep.url,episodesCompleted,episodesWatched,episodesResume);
-                epText.addView(text(!episodeState.isEmpty()?episodeState:
-                    stream==null?"قسمت را باز کن":"▶  آمادهٔ پخش",12,MUTED,false),lp(-1,27));
-                episodeRow.addView(epText,new LinearLayout.LayoutParams(0,-2,1));
-                episodeRow.setOnClickListener(v->{returnEpisodeUrl=ep.url;parentSeries=item;detail(ep);});
-                episodeRow.setOnFocusChangeListener((v,focused)->{
-                    episodeRow.setBackground(shape(focused?0xFF2B2B35:PANEL,TvUi.RADIUS_CARD,focused));
-                    float sc=TvUi.focusScale(this,focused?1.012f:1f);episodeRow.setScaleX(sc);episodeRow.setScaleY(sc);
-                });
-                LinearLayout.LayoutParams epLp=lp(-1,88);epLp.bottomMargin=dp(8);content.addView(episodeRow,epLp);
-                if(ep.url.equals(returnEpisodeUrl))episodeRow.requestFocus();
+            title("فصل‌ها و قسمت‌ها",complete?(newly>0?newly+" قسمت جدید از آخرین بازدید":"یک فصل را انتخاب کن و با ریموت حرکت کن"):"در حال دریافت قسمت‌ها…");
+            List<LibraryStore.Entry> episodesCompleted=library.completed();
+            List<LibraryStore.Entry> episodesWatched=library.watched();
+            List<LibraryStore.Entry> episodesResume=library.resumeList();
+            if(complete&&item.episodes.isEmpty())content.addView(text("فهرست قسمت‌ها در صفحهٔ عمومی دریافت نشد.",15,MUTED,false),lp(-1,50));
+            List<Integer> seasons=DetailSeasonPolicy.seasons(item.episodes);
+            if(!seasons.isEmpty()){
+                if(selectedDetailSeason==Integer.MIN_VALUE||!seasons.contains(selectedDetailSeason))selectedDetailSeason=seasons.get(0);
+                LinearLayout seasonRow=horizontal();seasonRow.setTag("detail-season-row");
+                for(Integer value:seasons){final int season=value;String label=season<=0?"فصل‌بندی‌نشده":"فصل "+season;
+                    TextView chip=button(label,season==selectedDetailSeason,()->{selectedDetailSeason=season;showDetail(item,complete);});
+                    chip.setTag("detail-season-"+season);chip.setContentDescription(label);seasonRow.addView(chip,lp(season<=0?168:112,45));gap(seasonRow,8);
+                }
+                HorizontalScrollView seasonScroller=new HorizontalScrollView(this);seasonScroller.setHorizontalScrollBarEnabled(false);
+                seasonScroller.setTag("detail-season-scroller");seasonScroller.addView(seasonRow);content.addView(seasonScroller,lp(-1,54));
             }
+            HorizontalScrollView episodeScroller=new HorizontalScrollView(this);
+            episodeScroller.setTag("detail-episode-scroller");episodeScroller.setHorizontalScrollBarEnabled(false);episodeScroller.setClipToPadding(false);
+            LinearLayout episodeRail=horizontal();episodeRail.setTag("detail-episode-rail");episodeScroller.addView(episodeRail);
+            int visibleEpisodes=0;
+            for(FarsiPlexTitle ep:item.episodes){
+                if(ep.season!=selectedDetailSeason)continue;visibleEpisodes++;
+                String stream=streams.get("farsiplex:"+ep.url);
+                LinearLayout episodeCard=vertical();episodeCard.setTag(ep.url);episodeCard.setFocusable(true);episodeCard.setClickable(true);
+                episodeCard.setPadding(dp(7),dp(7),dp(7),dp(7));episodeCard.setBackground(shape(0xFF181C27,12,false));
+                ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.setBackground(shape(0xFF28364D,7,false));
+                episodeCard.addView(cover,lp(218,107));if(!ep.poster.isEmpty())images.load(cover,ep.poster);
+                TextView epName=text(ep.name,14,WHITE,true);epName.setMaxLines(1);epName.setEllipsize(TextUtils.TruncateAt.END);episodeCard.addView(epName,lp(218,28));
+                String state=SeriesTracker.state(ep.url,episodesCompleted,episodesWatched,episodesResume);
+                episodeCard.addView(text(!state.isEmpty()?state:stream==null?"مشاهدهٔ جزئیات":"▶  آمادهٔ پخش",11,MUTED,false),lp(218,20));
+                episodeCard.setOnClickListener(v->{returnEpisodeUrl=ep.url;parentSeries=item;detail(ep);});TvUi.remoteClick(episodeCard);
+                episodeCard.setOnFocusChangeListener((v,focused)->{
+                    episodeCard.setBackground(shape(focused?0xFF28364D:0xFF181C27,12,focused));
+                    float scale=TvUi.focusScale(this,focused?1.035f:1f);episodeCard.setScaleX(scale);episodeCard.setScaleY(scale);
+                });
+                LinearLayout.LayoutParams epLp=lp(236,170);epLp.rightMargin=dp(11);episodeRail.addView(episodeCard,epLp);
+                if(ep.url.equals(returnEpisodeUrl))episodeCard.requestFocus();
+            }
+            if(visibleEpisodes>0)content.addView(episodeScroller,lp(-1,178));
+            else if(complete&&!item.episodes.isEmpty())content.addView(text("برای این سریال فصلی با قسمت قابل نمایش پیدا نشد.",14,MUTED,false),lp(-1,44));
         }
-        if(complete && !"episode".equals(item.kind)){
+        if(complete&&!("episode".equals(item.kind))){
             List<FarsiPlexTitle> catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
             List<FarsiPlexTitle> related=DiscoveryPolicy.similar(item,catalog,8);
+            title("پیشنهادهای مشابه",related.isEmpty()?"با اطلاعات فعلی کاتالوگ، عنوان مشابهی پیدا نشد":"بر اساس ژانرهای ثبت‌شده در کاتالوگ");
             if(!related.isEmpty()){
-                title("عنوان‌های مشابه","بر اساس ژانر واقعی ثبت‌شده در کاتالوگ");
-                HorizontalScrollView slider=new HorizontalScrollView(this);
-                slider.setHorizontalScrollBarEnabled(false);
+                HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
                 LinearLayout row=horizontal();row.setTag("poster-row");slider.addView(row);
                 for(FarsiPlexTitle relatedTitle:related)card(row,relatedTitle);
                 content.addView(slider,lp(-1,320));
             }
         }
         if(focusTag!=null){View preserved=root.findViewWithTag(focusTag);if(preserved!=null&&preserved.isFocusable())focusPoster(preserved);}
+        else if(controls.getChildCount()>0)controls.getChildAt(0).requestFocus();
         info(complete?"اطلاعات عنوان آماده است":"در حال دریافت جزئیات…");
     }
     private void backToList(){

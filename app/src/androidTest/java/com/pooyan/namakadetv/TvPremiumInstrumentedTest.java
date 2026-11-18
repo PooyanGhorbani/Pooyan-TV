@@ -50,6 +50,57 @@ public class TvPremiumInstrumentedTest {
    key(KeyEvent.KEYCODE_BACK);scenario.onActivity(a->assertTrue("Back restores chosen episode",((FrameLayout)field(a,"root")).findViewWithTag(episode).isFocused()));
   }
  }
+ @Test public void cinematicMovieDetailsShowCatalogDataProgressAndSimilarTitles()throws Exception{
+  String page="https://farsiplex.com/movie/detail-cinematic-fixture/";
+  String media="https://example.invalid/cinematic-fixture.mp4";
+  LibraryStore library=new LibraryStore(context());library.savePlayback("فیلم آزمایشی",media,page,45000,100000);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(new android.content.Intent(context(),MainActivity.class)
+      .putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true))){
+   scenario.onActivity(a->{
+    set(a,"destroyed",true);
+    FarsiPlexTitle movie=new FarsiPlexTitle(page,"movie","فیلم آزمایشی");movie.genre="Drama";movie.year="2025";movie.description="توضیح فارسی نمونه برای بررسی صفحهٔ جزئیات.";movie.rating="8.1";movie.publicStream=media;
+    FarsiPlexTitle related=new FarsiPlexTitle("https://farsiplex.com/movie/detail-similar-fixture/","movie","عنوان مشابه");related.genre="Drama";related.poster="";
+    @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> movies=(java.util.List<FarsiPlexTitle>)field(a,"loadedMovies");movies.clear();movies.add(related);
+    set(a,"selected",movie);invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},movie,true);
+    FrameLayout root=(FrameLayout)field(a,"root");
+    assertNotNull("Cinematic hero is rendered",root.findViewWithTag("detail-hero"));
+    assertNotNull("Backdrop layer is present",root.findViewWithTag("detail-backdrop"));
+    TextView heading=(TextView)root.findViewWithTag("detail-title");assertEquals("فیلم آزمایشی",heading.getText().toString());
+    assertEquals(View.TEXT_DIRECTION_FIRST_STRONG,heading.getTextDirection());
+    assertNotNull("Watch state is restored from local history",root.findViewWithTag("detail-watch-state"));
+    android.widget.ProgressBar progress=(android.widget.ProgressBar)root.findViewWithTag("detail-progress");assertNotNull(progress);assertEquals(450,progress.getProgress());
+    assertTrue("Play action remains focusable",root.findViewWithTag("detail-primary").isFocusable());
+    assertNotNull("Related titles use the existing catalog",root.findViewWithTag("poster-row"));
+    assertTrue(root.findViewWithTag("detail-primary").requestFocus());
+   });
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+   android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);
+   java.io.File directory=context().getExternalFilesDir(null);assertNotNull(directory);
+   try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(directory,"emulator-detail.png"))){assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}image.recycle();
+  }finally{library.forget(page,media);}
+ }
+ @Test public void seriesDetailsSwitchSeasonByRemoteAndRestoreEpisodeFocus(){
+  String s1="https://farsiplex.com/episode/detail-season-one/",s2="https://farsiplex.com/episode/detail-season-two/";
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(new android.content.Intent(context(),MainActivity.class)
+      .putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true))){
+   scenario.onActivity(a->{
+    set(a,"destroyed",true);FarsiPlexTitle series=new FarsiPlexTitle("https://farsiplex.com/tvshow/detail-season-fixture/","series","سریال آزمایشی");
+    FarsiPlexTitle first=new FarsiPlexTitle(s1,"episode","فصل یک · قسمت یک");first.season=1;
+    FarsiPlexTitle second=new FarsiPlexTitle(s2,"episode","فصل دو · قسمت یک");second.season=2;
+    series.episodes.add(first);series.episodes.add(second);set(a,"selected",series);invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},series,true);
+    FrameLayout root=(FrameLayout)field(a,"root");assertNotNull("First season is available",root.findViewWithTag("detail-season-1"));
+    assertNotNull("Only first-season episode is rendered",root.findViewWithTag(s1));assertNull(root.findViewWithTag(s2));
+    assertTrue(root.findViewWithTag("detail-season-2").requestFocus());
+   });
+   key(KeyEvent.KEYCODE_DPAD_CENTER);
+   scenario.onActivity(a->{FrameLayout root=(FrameLayout)field(a,"root");assertNotNull("Second-season episode appears after selecting its season",root.findViewWithTag(s2));assertNull(root.findViewWithTag(s1));assertEquals("detail-season-2",a.getCurrentFocus().getTag());});
+   scenario.onActivity(a->assertTrue(((FrameLayout)field(a,"root")).findViewWithTag(s2).requestFocus()));
+   key(KeyEvent.KEYCODE_DPAD_CENTER);
+   scenario.onActivity(a->assertEquals(s2,((FarsiPlexTitle)field(a,"selected")).url));
+   key(KeyEvent.KEYCODE_BACK);
+   scenario.onActivity(a->{FrameLayout root=(FrameLayout)field(a,"root");assertTrue("Back returns to the selected season and episode",root.findViewWithTag(s2).isFocused());});
+  }
+ }
  @Test public void profileDataAndRealPreferenceRestartAreIsolated(){
   Context c=context();ProfileStore store=new ProfileStore(c);String first=store.active();LibraryStore original=new LibraryStore(c);original.savePlayback("First","https://example.invalid/profile.mp4","https://farsiplex.com/movie/profile/",15000,100000);
   assertTrue(store.edit(null,"Test profile",2));String child=store.list().optJSONObject(store.list().length()-1).optString("id");
