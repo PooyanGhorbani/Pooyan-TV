@@ -64,8 +64,6 @@ jobs:
     needs: build-lint-unit
     runs-on: ubuntu-24.04
     timeout-minutes: 50
-    env:
-      ANDROID_ADB_SERVER_PORT: 5038
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -92,10 +90,6 @@ jobs:
           profile: ${{ matrix.profile }}
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          pre-emulator-launch-script: |
-            adb kill-server || true
-            adb start-server
-            adb version
           script: gradle --no-daemon connectedDebugAndroidTest
       - name: Save Android TV instrumented reports
         if: always()
