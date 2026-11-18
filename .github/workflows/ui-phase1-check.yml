@@ -5,6 +5,9 @@ on:
     branches: [ui/phase1]
     paths:
       - 'app/**'
+      - 'settings.gradle'
+      - 'build.gradle'
+      - 'gradle.properties'
       - '.github/workflows/ui-phase1-check.yml'
   workflow_dispatch:
 
