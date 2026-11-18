@@ -108,11 +108,12 @@ public class TvPremiumInstrumentedTest {
   }finally{library.forget(page,resolved.media);settings.edit().putInt("subtitle_delay",oldDelay).putFloat("subtitle_size",oldSize).apply();}
  }
   /** InputDispatcher navigation from bottom rails back to the hero, plus manual slides. */
-  @Test public void homeHeroCarouselAndRemoteUpNavigationWork(){
+  @Test public void zHomeHeroCarouselAndRemoteUpNavigationWork(){
    final LinearLayout[] rails=new LinearLayout[2];
    android.content.Intent offlineUi=new android.content.Intent(context(),MainActivity.class)
        .putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
-   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offlineUi)){
+   // Keep this final instrumentation screen alive until the runner reports completion.
+   ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offlineUi);
     scenario.onActivity(a->{
      set(a,"destroyed",true); // Prevent network callbacks and timer rotation during this fixture.
      LinearLayout content=(LinearLayout)field(a,"content");
@@ -152,7 +153,6 @@ public class TvPremiumInstrumentedTest {
      android.util.Log.i("Phase1FocusTest","navigation focus assertion passed");
     });
     android.util.Log.i("Phase1FocusTest","all focus assertions completed");
-   }
   }
   @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
