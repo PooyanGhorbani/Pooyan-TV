@@ -61,7 +61,7 @@ gradle_status=${PIPESTATUS[0]}
 set -e
 printf 'finished=%s\ngradle_exit=%s\n' "$(date --iso-8601=ns)" "$gradle_status" >> "$diag_dir/test-metadata.log"
 if [[ "$mode" == "full" || "$mode" == "logical-720" ]]; then
-  adb -s emulator-5554 exec-out run-as com.pooyan.namakadetv.dev070 cat files/emulator-detail.png > "$diag_dir/emulator-detail.png" 2> "$diag_dir/screenshot-pull.log" || {
+  adb -s emulator-5554 pull /sdcard/emulator-detail.png "$diag_dir/emulator-detail.png" > "$diag_dir/screenshot-pull.log" 2>&1 || {
     printf 'Screenshot pull failed; see %s/screenshot-pull.log\n' "$diag_dir" | tee -a "$diag_dir/test-metadata.log"
     rm -f "$diag_dir/emulator-detail.png"
   }

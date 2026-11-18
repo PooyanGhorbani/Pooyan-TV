@@ -78,6 +78,8 @@ public class TvPremiumInstrumentedTest {
    java.io.File target=new java.io.File(context().getFilesDir(),"emulator-detail.png");
    try(java.io.FileOutputStream out=new java.io.FileOutputStream(target)){assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}image.recycle();
    android.util.Log.i("DetailPreview","saved="+target.getAbsolutePath()+" bytes="+target.length());
+   try(android.os.ParcelFileDescriptor ignored=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(
+       "run-as "+context().getPackageName()+" cat files/emulator-detail.png > /sdcard/emulator-detail.png")){}
   }finally{library.forget(page,media);}
  }
  @Test public void seriesDetailsSwitchSeasonByRemoteAndRestoreEpisodeFocus(){
