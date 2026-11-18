@@ -143,7 +143,15 @@ public class TvPremiumInstrumentedTest {
     scenario.onActivity(a->assertEquals("Fixture B",((FarsiPlexTitle)field(a,"featured")).name));
     key(KeyEvent.KEYCODE_DPAD_UP);
     android.util.Log.i("Phase1FocusTest","final UP to navigation completed");
-    scenario.onActivity(a->assertTrue("UP reaches top navigation",a.getCurrentFocus().getParent()==field(a,"navigationBar")));
+    scenario.onActivity(a->{
+     android.util.Log.i("Phase1FocusTest","checking top navigation focus");
+     View focused=a.getCurrentFocus();
+     android.util.Log.i("Phase1FocusTest","focused="+(focused==null?"null":focused.getTag()+" parent="+focused.getParent().getClass().getSimpleName()));
+     assertNotNull("Focus must remain on a view after moving to navigation",focused);
+     assertSame("UP reaches top navigation",field(a,"navigationBar"),focused.getParent());
+     android.util.Log.i("Phase1FocusTest","navigation focus assertion passed");
+    });
+    android.util.Log.i("Phase1FocusTest","all focus assertions completed");
    }
   }
   @Test public void homeStartsAndCapturesNativeLayout()throws Exception{
