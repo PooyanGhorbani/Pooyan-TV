@@ -75,7 +75,7 @@ public final class FarsiPlexParser {
             if(next!=null)t.description=truncate(next.text(),780);
         }
         if(t.description.isEmpty()){
-            Element meta=d.selectFirst("meta[name=description]");if(meta!=null)t.description=truncate(meta.attr("content"),780);
+            Element descriptionMeta=d.selectFirst("meta[name=description]");if(descriptionMeta!=null)t.description=truncate(descriptionMeta.attr("content"),780);
         }
         if(t.description.isEmpty()){
             Element first=d.selectFirst("article p, .entry-content p, .description p");
