@@ -213,6 +213,7 @@ public final class PlayerActivity extends Activity {
         playButton = addControl("Ⅱ مکث", this::togglePlayback);
         addControl("↶ ۱۰ ثانیه", () -> seekBy(-10000));
         addControl("↷ ۳۰ ثانیه", () -> seekBy(30000));
+        addControl("⏭ پرش دستی ۹۰ ثانیه", () -> seekBy(90000));
         addControl("سرعت", this::chooseSpeed);
         addControl("کیفیت", () -> chooseTrack(C.TRACK_TYPE_VIDEO));
         addControl("صدا", () -> chooseTrack(C.TRACK_TYPE_AUDIO));

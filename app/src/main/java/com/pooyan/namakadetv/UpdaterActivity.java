@@ -60,7 +60,7 @@ public final class UpdaterActivity extends Activity {
         for(int hop=0;hop<5;hop++){
             if(!UpdatePolicy.allowedDownloadHop(current)&&!UpdatePolicy.RELEASES_API.equals(current))throw new SecurityException("انتقال به میزبان غیرمجاز");
             HttpURLConnection c=(HttpURLConnection)new URL(current).openConnection();c.setInstanceFollowRedirects(false);
-            c.setConnectTimeout(12000);c.setReadTimeout(16000);c.setRequestProperty("User-Agent","PooyanTV-Updater/0.7.0");
+            c.setConnectTimeout(12000);c.setReadTimeout(16000);c.setRequestProperty("User-Agent","PooyanTV-Updater/0.7.5");
             int status=c.getResponseCode();
             if(status==301||status==302||status==303||status==307||status==308){String loc=c.getHeaderField("Location");
                 if(loc==null){c.disconnect();throw new IllegalStateException("هدایت نامعتبر");}
@@ -87,13 +87,10 @@ public final class UpdaterActivity extends Activity {
         }
         return best;
     }
-    /** At most one public GitHub check daily, with no personal data or DeepSeek API. */
+    private static final java.util.Set<String> prompted=java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** Quiet asynchronous check at every Activity creation; no user data leaves the device. */
     public static void maybeNotify(Activity activity){
-        if(!activity.getPackageName().endsWith(".tv"))return; // No update prompt for side-by-side debug editions
-        android.content.SharedPreferences prefs=activity.getSharedPreferences("app_update_check",MODE_PRIVATE);
-        long now=System.currentTimeMillis();
-        if(now-prefs.getLong("checked_at",0)<24*60*60*1000L)return;
-        prefs.edit().putLong("checked_at",now).apply();
+        if(!activity.getPackageName().endsWith(".tv"))return; // Ignore side-by-side debug editions
         new Thread(()->{
             HttpURLConnection c=null;
             try{
@@ -101,16 +98,24 @@ public final class UpdaterActivity extends Activity {
                 String payload;try(InputStream in=c.getInputStream()){payload=readLimited(in,API_LIMIT);}finally{c.disconnect();}
                 Release release=select(new JSONArray(payload),BuildConfig.VERSION_NAME);
                 if(release==null)return;
-                activity.runOnUiThread(()->{
-                    if(activity.isFinishing()||activity.isDestroyed())return;
-                    new AlertDialog.Builder(activity).setTitle("آپدیت جدید Pooyan TV")
-                        .setMessage("نسخهٔ "+release.tag+" در GitHub منتشر شده. می‌خواهی تغییرات را ببینی؟")
-                        .setNegativeButton("بعداً",null)
-                        .setPositiveButton("جزئیات و دانلود",(d,w)->activity.startActivity(new Intent(activity,UpdaterActivity.class)))
-                        .show();
-                });
+                activity.runOnUiThread(()->notifyWhenForeground(activity,release,0));
             }catch(Exception ignored){if(c!=null)c.disconnect();}
         },"pooyan-update-check").start();
+    }
+    private static void notifyWhenForeground(Activity activity,Release release,int attempt){
+        if(activity.isFinishing()||activity.isDestroyed())return;
+        // Never interrupt playback: the home activity loses window focus during PlayerActivity.
+        if(!activity.hasWindowFocus()){
+            if(attempt<180)new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                ()->notifyWhenForeground(activity,release,attempt+1),2000);
+            return;
+        }
+        if(!prompted.add(release.tag))return; // Once per running process and release.
+        new AlertDialog.Builder(activity).setTitle("آپدیت جدید Pooyan TV")
+            .setMessage("نسخهٔ "+release.tag+" در GitHub منتشر شده.")
+            .setNegativeButton("بعداً",null)
+            .setPositiveButton("جزئیات و دانلود",(d,w)->activity.startActivity(new Intent(activity,UpdaterActivity.class)))
+            .show();
     }
     private void checkNow(){if(busy)return;setBusy(true);show("در حال دریافت اطلاعات انتشار از GitHub…");
         io.execute(()->{
