@@ -93,7 +93,7 @@ public class TvPremiumInstrumentedTest {
     assertTrue(root.findViewWithTag("detail-season-2").requestFocus());
    });
    key(KeyEvent.KEYCODE_DPAD_CENTER);
-   scenario.onActivity(a->{FrameLayout root=(FrameLayout)field(a,"root");assertNotNull("Second-season episode appears after selecting its season",root.findViewWithTag(s2));assertNull(root.findViewWithTag(s1));assertEquals("detail-season-2",a.getCurrentFocus().getTag());});
+   scenario.onActivity(a->{FrameLayout root=(FrameLayout)field(a,"root");android.util.Log.i("DetailSeasonTest","season="+field(a,"selectedDetailSeason")+" focus="+(a.getCurrentFocus()==null?"null":a.getCurrentFocus().getTag()));assertEquals("DPAD Select activates the focused season",2,field(a,"selectedDetailSeason"));assertNotNull("Second-season episode appears after selecting its season",root.findViewWithTag(s2));assertNull(root.findViewWithTag(s1));assertEquals("detail-season-2",a.getCurrentFocus().getTag());});
    scenario.onActivity(a->assertTrue(((FrameLayout)field(a,"root")).findViewWithTag(s2).requestFocus()));
    key(KeyEvent.KEYCODE_DPAD_CENTER);
    scenario.onActivity(a->assertEquals(s2,((FarsiPlexTitle)field(a,"selected")).url));

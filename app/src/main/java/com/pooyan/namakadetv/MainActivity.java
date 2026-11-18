@@ -677,7 +677,7 @@ public final class MainActivity extends Activity {
             HorizontalScrollView episodeScroller=new HorizontalScrollView(this);
             episodeScroller.setTag("detail-episode-scroller");episodeScroller.setHorizontalScrollBarEnabled(false);episodeScroller.setClipToPadding(false);
             LinearLayout episodeRail=horizontal();episodeRail.setTag("detail-episode-rail");episodeScroller.addView(episodeRail);
-            int visibleEpisodes=0;
+            int visibleEpisodes=0;View restoreEpisodeFocus=null;
             for(FarsiPlexTitle ep:item.episodes){
                 if(ep.season!=selectedDetailSeason)continue;visibleEpisodes++;
                 String stream=streams.get("farsiplex:"+ep.url);
@@ -694,9 +694,12 @@ public final class MainActivity extends Activity {
                     float scale=TvUi.focusScale(this,focused?1.035f:1f);episodeCard.setScaleX(scale);episodeCard.setScaleY(scale);
                 });
                 LinearLayout.LayoutParams epLp=lp(236,170);epLp.rightMargin=dp(11);episodeRail.addView(episodeCard,epLp);
-                if(ep.url.equals(returnEpisodeUrl))episodeCard.requestFocus();
+                if(ep.url.equals(returnEpisodeUrl))restoreEpisodeFocus=episodeCard;
             }
-            if(visibleEpisodes>0)content.addView(episodeScroller,lp(-1,178));
+            if(visibleEpisodes>0){
+                content.addView(episodeScroller,lp(-1,178));
+                if(restoreEpisodeFocus!=null){View target=restoreEpisodeFocus;target.post(()->focusPoster(target));}
+            }
             else if(complete&&!item.episodes.isEmpty())content.addView(text("برای این سریال فصلی با قسمت قابل نمایش پیدا نشد.",14,MUTED,false),lp(-1,44));
         }
         if(complete&&!("episode".equals(item.kind))){
