@@ -61,10 +61,11 @@ gradle_status=${PIPESTATUS[0]}
 set -e
 printf 'finished=%s\ngradle_exit=%s\n' "$(date --iso-8601=ns)" "$gradle_status" >> "$diag_dir/test-metadata.log"
 if [[ "$mode" == "full" || "$mode" == "logical-720" ]]; then
-  adb -s emulator-5554 pull /sdcard/emulator-detail.png "$diag_dir/emulator-detail.png" > "$diag_dir/screenshot-pull.log" 2>&1 || {
-    printf 'Screenshot pull failed; see %s/screenshot-pull.log\n' "$diag_dir" | tee -a "$diag_dir/test-metadata.log"
+  awk '/DetailPreview: PNG_CHUNK:[0-9][0-9][0-9][0-9]:/ { sub(/^.*DetailPreview: PNG_CHUNK:[^:]*:/, ""); printf "%s", $0; found=1 } END { if(found) printf "\n" }' "$diag_dir/logcat-live.log" | base64 --decode > "$diag_dir/emulator-detail.png" 2> "$diag_dir/screenshot-pull.log" || true
+  if ! grep -q 'DetailPreview: PNG_END' "$diag_dir/logcat-live.log" || [[ ! -s "$diag_dir/emulator-detail.png" ]]; then
+    printf 'No complete rendered details screenshot in captured Logcat; see %s/screenshot-pull.log\n' "$diag_dir" | tee -a "$diag_dir/test-metadata.log"
     rm -f "$diag_dir/emulator-detail.png"
-  }
+  fi
   if [[ -s "$diag_dir/emulator-detail.png" ]]; then sha256sum "$diag_dir/emulator-detail.png" >> "$diag_dir/test-metadata.log"; else printf 'screenshot=missing\n' >> "$diag_dir/test-metadata.log"; fi
 fi
 exit "$gradle_status"

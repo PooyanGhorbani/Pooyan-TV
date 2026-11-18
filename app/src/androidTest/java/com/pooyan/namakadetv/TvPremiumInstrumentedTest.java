@@ -75,12 +75,12 @@ public class TvPremiumInstrumentedTest {
    });
    InstrumentationRegistry.getInstrumentation().waitForIdleSync();
    android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);
-   image.recycle();
-   try(android.os.ParcelFileDescriptor shell=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(
-       "screencap -p /sdcard/emulator-detail.png && test -s /sdcard/emulator-detail.png && echo SCREEN_CAPTURE_OK");
-       java.io.BufferedReader result=new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(shell.getFileDescriptor())))){
-    assertEquals("Emulator screenshot is written while the details UI is visible","SCREEN_CAPTURE_OK",result.readLine());
-   }
+   java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,bytes));image.recycle();
+   String encoded=android.util.Base64.encodeToString(bytes.toByteArray(),android.util.Base64.NO_WRAP);int chunkSize=2600;
+   android.util.Log.i("DetailPreview","PNG_BEGIN chunks="+((encoded.length()+chunkSize-1)/chunkSize)+" bytes="+bytes.size());
+   for(int offset=0,index=0;offset<encoded.length();offset+=chunkSize,index++)
+    android.util.Log.i("DetailPreview",String.format(java.util.Locale.ROOT,"PNG_CHUNK:%04d:%s",index,encoded.substring(offset,Math.min(encoded.length(),offset+chunkSize))));
+   android.util.Log.i("DetailPreview","PNG_END");
   }finally{library.forget(page,media);}
  }
  @Test public void seriesDetailsSwitchSeasonByRemoteAndRestoreEpisodeFocus(){
