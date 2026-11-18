@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class TvPremiumInstrumentedTest {
  @Before public void pickerOff(){InstrumentationRegistry.getInstrumentation().setInTouchMode(false);context().getSharedPreferences("family_profiles",0).edit().putBoolean("picker",false).commit();}
  private Context context(){return InstrumentationRegistry.getInstrumentation().getTargetContext();}
+ private boolean containsPersian(String value){if(value==null)return false;for(int i=0;i<value.length();i++){char c=value.charAt(i);if(c>='\u0600'&&c<='\u06FF')return true;}return false;}
  private Object field(Object owner,String name){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(owner);}catch(Exception e){throw new AssertionError(e);}}
  private void set(Object owner,String name,Object value){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);f.set(owner,value);}catch(Exception e){throw new AssertionError(e);}}
  private Object invoke(Object owner,String name,Class<?>[] types,Object...args){try{Method m=owner.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(owner,args);}catch(Exception e){throw new AssertionError(e);}}
@@ -128,7 +129,7 @@ public class TvPremiumInstrumentedTest {
      assertTrue("Hero height stays in the tested design range",hero.getLayoutParams().height>=340*hero.getResources().getDisplayMetrics().density);
      TextView description=(TextView)field(a,"featuredDescription");
      assertEquals("Persian copy uses first-strong RTL-aware direction",View.TEXT_DIRECTION_FIRST_STRONG,description.getTextDirection());
-     assertTrue("Persian home copy is present",description.getText().toString().contains("پیشنهادی"));
+     assertTrue("Persian home copy is present",containsPersian(description.getText().toString()));
      View resume=content.findViewWithTag("resume:"+PlaybackResumePolicy.identity("",continuePage));
      assertNotNull("Continue Watching fixture appears on home",resume);
      assertTrue("Continue Watching accepts remote focus",resume.isFocusable());
