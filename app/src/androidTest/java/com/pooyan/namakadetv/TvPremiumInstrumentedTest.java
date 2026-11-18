@@ -131,13 +131,18 @@ public class TvPremiumInstrumentedTest {
      }
      assertTrue(rails[1].getChildAt(0).requestFocus());
     });
+    android.util.Log.i("Phase1FocusTest","fixture loaded and last poster focused");
     key(KeyEvent.KEYCODE_DPAD_UP);
+    android.util.Log.i("Phase1FocusTest","first UP completed");
     scenario.onActivity(a->assertTrue("UP moves to previous poster row",rails[0].getChildAt(0).isFocused()));
     key(KeyEvent.KEYCODE_DPAD_UP);
+    android.util.Log.i("Phase1FocusTest","second UP completed");
     scenario.onActivity(a->assertEquals("home-primary",a.getCurrentFocus().getTag()));
     key(KeyEvent.KEYCODE_DPAD_LEFT);
+    android.util.Log.i("Phase1FocusTest","LEFT carousel selection completed");
     scenario.onActivity(a->assertEquals("Fixture B",((FarsiPlexTitle)field(a,"featured")).name));
     key(KeyEvent.KEYCODE_DPAD_UP);
+    android.util.Log.i("Phase1FocusTest","final UP to navigation completed");
     scenario.onActivity(a->assertTrue("UP reaches top navigation",a.getCurrentFocus().getParent()==field(a,"navigationBar")));
    }
   }
