@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+diag_dir="${POOYAN_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/pooyan-tv-diagnostics}"
+mkdir -p "$diag_dir"
+emulator_output="$diag_dir/emulator-output.log"
+: > "$emulator_output"
+emulator_bin="$(command -v emulator)"
+if [[ -z "$emulator_bin" || ! -x "$emulator_bin" ]]; then
+  echo "Android emulator executable was not found on PATH" >&2
+  exit 1
+fi
+real_bin="${emulator_bin}.pooyan-real"
+if [[ ! -e "$real_bin" ]]; then mv "$emulator_bin" "$real_bin"; fi
+cat > "$emulator_bin" <<'WRAPPER'
+#!/usr/bin/env bash
+set -uo pipefail
+  exec "${BASH_SOURCE[0]}.pooyan-real" "$@" >> "${POOYAN_DIAGNOSTICS_DIR:?}/emulator-output.log" 2>&1
+WRAPPER
+chmod +x "$emulator_bin"
+echo "Wrapped emulator executable: $emulator_bin" >> "$emulator_output"
