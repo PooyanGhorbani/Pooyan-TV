@@ -95,8 +95,7 @@ jobs:
           arch: x86
           profile: ${{ matrix.profile }}
           disable-animations: true
-          emulator-port: 5556
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot -logcat 'adbd:V,AndroidRuntime:E,lmkd:W,ActivityManager:E,Phase1FocusTest:I,*:S'
           script: gradle --no-daemon connectedDebugAndroidTest
       - name: Record runner and ADB state after Android TV emulator
         if: always()
