@@ -65,7 +65,7 @@ if [[ "$mode" == "full" || "$mode" == "logical-720" ]]; then
   mkdir -p "$diag_dir/previews"
   adb -s emulator-5554 pull /sdcard/Android/data/com.pooyan.namakadetv.dev070/files "$diag_dir/previews/app-files" \
     > "$diag_dir/previews/pull.log" 2>&1 || true
-  for image in ultimate-home.png ultimate-home-live.png ultimate-movie-details.png ultimate-series-details.png ultimate-search.png ultimate-player.png ultimate-player-unavailable.png; do
+  for image in ultimate-home.png ultimate-home-live.png ultimate-movie-details.png ultimate-detail-menu-expanded.png ultimate-series-details.png ultimate-search.png ultimate-player.png ultimate-player-unavailable.png; do
     awk -v image="$image" '
       index($0,"UltimatePreview: PNG_BEGIN:" image ":"){active=1;next}
       index($0,"UltimatePreview: PNG_END:" image){active=0;ended=1;next}

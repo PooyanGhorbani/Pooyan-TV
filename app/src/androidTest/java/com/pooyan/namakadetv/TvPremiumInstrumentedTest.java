@@ -21,6 +21,7 @@ public class TvPremiumInstrumentedTest {
  private Object field(Object owner,String name){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(owner);}catch(Exception e){throw new AssertionError(e);}}
  private void set(Object owner,String name,Object value){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);f.set(owner,value);}catch(Exception e){throw new AssertionError(e);}}
  private Object invoke(Object owner,String name,Class<?>[] types,Object...args){try{Method m=owner.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(owner,args);}catch(Exception e){throw new AssertionError(e);}}
+ private boolean isInside(View view,ViewGroup parent){android.view.ViewParent current=view;while(current!=null){if(current==parent)return true;current=current.getParent();}return false;}
  private void key(int code){InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(code);InstrumentationRegistry.getInstrumentation().waitForIdleSync();}
  private void capturePreview(String name)throws Exception{
   InstrumentationRegistry.getInstrumentation().waitForIdleSync();android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull("Screenshot captured from emulator",image);
@@ -119,6 +120,65 @@ public class TvPremiumInstrumentedTest {
    scenario.onActivity(a->assertEquals(s2,((FarsiPlexTitle)field(a,"selected")).url));
    key(KeyEvent.KEYCODE_BACK);
    scenario.onActivity(a->{FrameLayout root=(FrameLayout)field(a,"root");assertTrue("Back returns to the selected season and episode",root.findViewWithTag(s2).isFocused());});
+  }
+ }
+ @Test public void detailRailCollapsesExpandsAndNeverClipsActionButtons(){
+  android.content.Intent offline=new android.content.Intent(context(),MainActivity.class).putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offline)){
+   scenario.onActivity(a->{
+    set(a,"destroyed",true);FarsiPlexTitle movie=new FarsiPlexTitle("https://farsiplex.com/movie/layout-fit-fixture/","movie","فیلم آزمایشی چیدمان");
+    set(a,"selected",movie);invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},movie,true);
+    FrameLayout root=(FrameLayout)field(a,"root");LinearLayout nav=(LinearLayout)field(a,"navigationBar");
+    assertEquals("Movie details start with the compact icon rail",TvUi.dp(a,68),nav.getLayoutParams().width);
+    assertEquals("Collapsed rail exposes the icon while retaining its accessible label","⌂",((TextView)nav.findViewWithTag("nav:خانه")).getText().toString());
+    assertEquals("Movie action is the initial focus", "detail-primary",a.getCurrentFocus().getTag());
+    for(String tag:new String[]{"detail-primary","detail-favorite","detail-back","detail-alternative"}){
+     View action=root.findViewWithTag(tag);assertNotNull("Action is present: "+tag,action);assertTrue("Action has measured width: "+tag,action.getWidth()>0);
+     android.graphics.Rect visible=new android.graphics.Rect();assertTrue("Action is visible: "+tag,action.getGlobalVisibleRect(visible));
+     assertEquals("Action is not clipped horizontally: "+tag,action.getWidth(),visible.width());
+    }
+    View back=root.findViewWithTag("detail-back");assertTrue(back.requestFocus());
+   });
+   key(KeyEvent.KEYCODE_DPAD_RIGHT);
+   scenario.onActivity(a->{
+    LinearLayout nav=(LinearLayout)field(a,"navigationBar");FrameLayout root=(FrameLayout)field(a,"root");
+    assertTrue("Remote RIGHT at the detail boundary enters the side menu",isInside(a.getCurrentFocus(),nav));
+    assertEquals("Focused rail expands to show labels",TvUi.dp(a,176),nav.getLayoutParams().width);
+    for(String tag:new String[]{"detail-primary","detail-favorite","detail-back","detail-alternative"}){
+     View action=root.findViewWithTag(tag);android.graphics.Rect visible=new android.graphics.Rect();
+     assertNotNull(action);assertTrue("Expanded-menu action stays visible: "+tag,action.getGlobalVisibleRect(visible));
+     assertEquals("Expanded menu does not cover action: "+tag,action.getWidth(),visible.width());
+    }
+   });
+   key(KeyEvent.KEYCODE_DPAD_LEFT);
+   scenario.onActivity(a->{
+    LinearLayout nav=(LinearLayout)field(a,"navigationBar");
+    assertEquals("Remote LEFT returns focus to content", "detail-primary",a.getCurrentFocus().getTag());
+    assertEquals("Rail collapses after focus leaves it",TvUi.dp(a,68),nav.getLayoutParams().width);
+    ViewGroup page=(ViewGroup)((FrameLayout)field(a,"root")).findViewWithTag("page-content");
+    LinearLayout content=(LinearLayout)field(a,"content");assertTrue("Main content remains beside the rail",page.getWidth()>content.getPaddingLeft()+content.getPaddingRight());
+   });
+  }
+ }
+ @Test public void seasonAndEpisodeRowsAreReachableByDpadAndScrollIntoView(){
+  android.content.Intent offline=new android.content.Intent(context(),MainActivity.class).putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
+  String ep1="https://farsiplex.com/episode/layout-ep-1/",ep2="https://farsiplex.com/episode/layout-ep-2/",ep3="https://farsiplex.com/episode/layout-ep-3/";
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offline)){
+   scenario.onActivity(a->{
+    set(a,"destroyed",true);FarsiPlexTitle series=new FarsiPlexTitle("https://farsiplex.com/tvshow/layout-focus/","series","سریال آزمایشی");
+    FarsiPlexTitle one=new FarsiPlexTitle(ep1,"episode","قسمت یک");one.season=1;FarsiPlexTitle two=new FarsiPlexTitle(ep2,"episode","قسمت دو");two.season=1;FarsiPlexTitle three=new FarsiPlexTitle(ep3,"episode","قسمت یک فصل دو");three.season=2;
+    series.episodes.add(one);series.episodes.add(two);series.episodes.add(three);set(a,"selected",series);invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},series,true);
+    FrameLayout root=(FrameLayout)field(a,"root");assertNotNull(root.findViewWithTag("detail-season-1"));assertNotNull(root.findViewWithTag(ep1));assertNotNull(root.findViewWithTag(ep2));assertNull(root.findViewWithTag(ep3));
+    assertTrue(root.findViewWithTag("detail-season-1").requestFocus());
+   });
+   key(KeyEvent.KEYCODE_DPAD_DOWN);
+   scenario.onActivity(a->{assertEquals("Season DOWN reaches the first episode",ep1,a.getCurrentFocus().getTag());});
+   key(KeyEvent.KEYCODE_DPAD_RIGHT);
+   scenario.onActivity(a->{assertEquals("Episode RIGHT moves to the next card",ep2,a.getCurrentFocus().getTag());});
+   key(KeyEvent.KEYCODE_DPAD_LEFT);
+   scenario.onActivity(a->{assertEquals("Episode LEFT returns without losing focus",ep1,a.getCurrentFocus().getTag());});
+   key(KeyEvent.KEYCODE_DPAD_UP);
+   scenario.onActivity(a->{assertEquals("Episode UP returns to its season selector","detail-season-1",a.getCurrentFocus().getTag());});
   }
  }
  @Test public void profileDataAndRealPreferenceRestartAreIsolated(){
@@ -297,6 +357,9 @@ public class TvPremiumInstrumentedTest {
    capturePreview("ultimate-home-live.png");
    final FarsiPlexTitle moviePage=movie[0]!=null?movie[0]:new FarsiPlexTitle("","movie","");
    scenario.onActivity(a->{if(movie[0]!=null)invoke(a,"detail",new Class[]{FarsiPlexTitle.class},moviePage);else invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},moviePage,true);});Thread.sleep(5000);capturePreview("ultimate-movie-details.png");
+   scenario.onActivity(a->{LinearLayout nav=(LinearLayout)field(a,"navigationBar");assertEquals(TvUi.dp(a,68),nav.getLayoutParams().width);assertTrue(nav.findViewWithTag("nav:خانه").requestFocus());});
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();capturePreview("ultimate-detail-menu-expanded.png");key(KeyEvent.KEYCODE_DPAD_LEFT);
+   scenario.onActivity(a->{assertEquals("detail-primary",a.getCurrentFocus().getTag());assertEquals(TvUi.dp(a,68),((LinearLayout)field(a,"navigationBar")).getLayoutParams().width);});
    scenario.onActivity(a->invoke(a,"search",new Class[]{String.class},movie[0]!=null?moviePage.name:"فیلم"));Thread.sleep(4000);capturePreview("ultimate-search.png");
    final FarsiPlexTitle seriesPage=series[0]!=null?series[0]:new FarsiPlexTitle("","series","");
    scenario.onActivity(a->{if(series[0]!=null)invoke(a,"detail",new Class[]{FarsiPlexTitle.class},seriesPage);else invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},seriesPage,true);});Thread.sleep(6000);capturePreview("ultimate-series-details.png");
