@@ -5,7 +5,7 @@ import android.content.SharedPreferences;
 /** Explicit schema-limited profile import/export. No media tokens, credentials or private app access. */
 public final class DataTransfer {
  public static String safePoster(String url){if(!ImageUrlPolicy.allowed(url))return "";try{return new java.net.URI(url).getRawQuery()==null?url:"";}catch(Exception e){return "";}}
- public static boolean page(String url){return url!=null&&url.length()<=1800&&( !FarsiPlexUrlPolicy.mediaType(url).isEmpty()||!NamakadeCatalog.safeUrl(url).isEmpty());}
+ public static boolean page(String url){return url!=null&&url.length()<=1800&&( !FarsiPlexUrlPolicy.mediaType(url).isEmpty()||!NamakadeCatalog.safeUrl(url).isEmpty()||!ArchiveMoviesRepository.safePage(url).isEmpty());}
  public static String exportData(SharedPreferences prefs,LibraryStore library)throws Exception{
   JSONArray favorites=new JSONArray(prefs.getString("favorites","[]")),safe=new JSONArray(),progress=new JSONArray();
   for(int i=0;i<Math.min(150,favorites.length());i++){JSONObject o=favorites.optJSONObject(i);if(o!=null&&page(o.optString("url")))safe.put(new JSONObject().put("url",PlaybackResumePolicy.identity("",o.optString("url"))).put("title",o.optString("title")).put("kind",o.optString("kind")).put("poster",safePoster(o.optString("poster"))));}

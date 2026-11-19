@@ -16,10 +16,14 @@ public final class ImageUrlPolicy {
                 &&!host.equals("media.negahestan.com")
                 &&!host.equals("image.tmdb.org")
                 &&!host.equals("images.metahub.space")
-                &&!host.equals("assets.fanart.tv"))return false;
+                &&!host.equals("assets.fanart.tv")
+                &&!host.equals("archive.org")
+                &&!host.equals("storage.googleapis.com"))return false;
             String path=u.getPath();
             if(path==null)return false;
             if(host.equals("images.metahub.space") && path.startsWith("/poster/"))return true;
+            if(host.equals("archive.org"))return u.getRawQuery()==null && path.matches("/services/img/[A-Za-z0-9._-]{1,100}");
+            if(host.equals("storage.googleapis.com"))return u.getRawQuery()==null && path.matches("/gtv-videos-bucket/sample/images/[A-Za-z0-9]+\\.jpg");
             return path.toLowerCase(Locale.ROOT).matches(".*\\.(jpg|jpeg|webp|png)");
         }catch(Exception e){return false;}
     }

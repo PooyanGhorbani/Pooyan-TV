@@ -314,6 +314,7 @@ public final class MainActivity extends Activity {
         addContinueWatching();
         continueSlot.setVisibility(preferences.getBoolean("home_continue",true)?View.VISIBLE:View.GONE);
         content.addView(button("سورپرایزم کن از کاتالوگ",false,this::surpriseMe),lp(285,48));
+        title("فیلم‌های خارجی","آثار آزاد با زبان اصلی · بدون نیاز به افزونه");foreignRail();
         title("فیلم‌ها","");rail("movie");
         movieSlot=vertical();content.addView(movieSlot,lp(-1,-2));
         favoriteSlot=vertical();content.addView(favoriteSlot,lp(-1,-2));
@@ -412,6 +413,7 @@ public final class MainActivity extends Activity {
             tile.setOnClickListener(v->{
                 String raw=entry.pageUrl;String kind=FarsiPlexUrlPolicy.mediaType(raw);
                 if(!NamakadeCatalog.safeUrl(raw).isEmpty())kind=raw.contains("/episodes/")?"episode":raw.contains("/series")?"series":"movie";
+                if(!ArchiveMoviesRepository.safePage(raw).isEmpty())kind="movie";
                 if(!kind.isEmpty())detail(new FarsiPlexTitle(raw,kind,entry.title));
                 else play(entry.title,entry.url,entry.pageUrl);
             });
@@ -424,6 +426,37 @@ public final class MainActivity extends Activity {
             TextView heading=text("ادامهٔ تماشا",23,WHITE,true);heading.setPadding(0,dp(18),0,dp(8));
             continueSlot.addView(heading,lp(-1,60));continueSlot.addView(slider,lp(-1,130));
         }
+    }
+    private void foreignRail(){
+        HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
+        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);row.setTag("poster-row");slider.addView(row);
+        content.addView(slider,lp(-1,320));
+        for(FarsiPlexTitle film:ArchiveMoviesRepository.openFilms())card(row,film);
+        content.addView(button("همهٔ فیلم‌های خارجی",false,()->foreignBrowse(1)),lp(260,50));
+        if(offlineUiTest)return;
+        int token=generation;
+        source.foreignMovies(1,(items,error)->{
+            if(destroyed||token!=generation||!"home".equals(screen))return;
+            if(!items.isEmpty()){
+                row.removeAllViews();for(int i=0;i<Math.min(items.size(),18);i++)card(row,items.get(i));
+            }else if(error!=null)info(error);
+        });
+    }
+    private void foreignBrowse(int foreignPage){
+        parentSeries=null;begin("foreign");
+        title("فیلم‌های خارجی","آثار با مجوز باز؛ فایل واقعی هنگام بازکردن جزئیات بررسی می‌شود.");
+        LinearLayout grid=vertical();content.addView(grid,lp(-1,-2));
+        grid.addView(text("در حال دریافت فیلم‌ها…",15,MUTED,false),lp(-1,80));
+        content.addView(button("صفحهٔ بعد",false,()->foreignBrowse(Math.min(10,foreignPage+1))),lp(160,50));
+        if(foreignPage>1)content.addView(button("صفحهٔ قبل",false,()->foreignBrowse(foreignPage-1)),lp(160,50));
+        if(offlineUiTest)return;
+        int token=generation;
+        source.foreignMovies(foreignPage,(items,error)->{
+            if(destroyed||generation!=token||!"foreign".equals(screen))return;
+            grid.removeAllViews();
+            if(items.isEmpty())grid.addView(text(error!=null?error:"در این صفحه عنوانی پیدا نشد.",15,MUTED,false),lp(-1,80));
+            else showGrid(grid,items);
+        });
     }
     private void rail(String kind){
         HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
@@ -1107,6 +1140,7 @@ public final class MainActivity extends Activity {
                     else {url=FarsiPlexUrlPolicy.normalize(FarsiPlexUrlPolicy.SITE,raw);
                         kind=FarsiPlexUrlPolicy.mediaType(url);}
                 }else if(kind.isEmpty())kind=url.contains("/movies/")?"movie":"series";
+                if(url.isEmpty()) {url=ArchiveMoviesRepository.safePage(raw);if(!url.isEmpty())kind="movie";}
                 if(url.isEmpty()||kind.isEmpty())continue;
                 FarsiPlexTitle item=new FarsiPlexTitle(url,kind,j.optString("title"));
                 String poster=j.optString("poster","");
@@ -1290,7 +1324,7 @@ public final class MainActivity extends Activity {
     private void historyEntries(List<LibraryStore.Entry> list,boolean completed){begin("history");title(completed?"تمام‌شده‌ها":"تاریخچه","");renderHistory(list);}
     private void renderHistory(List<LibraryStore.Entry> list){
         if(list.isEmpty())content.addView(text("هنوز چیزی تماشا نشده است.",16,MUTED,false),lp(-1,65));
-        for(LibraryStore.Entry e:list)content.addView(button(e.title+" · "+PlaybackResumePolicy.time(e.positionMs),false,()->new AlertDialog.Builder(this).setTitle(e.title).setItems(new String[]{"بازکردن عنوان","حذف فقط این مورد"},(d,n)->{if(n==1){new LibraryStore(this).forget(e.pageUrl,e.url);historyScreen();}else if(DataTransfer.page(e.pageUrl)){String kind=FarsiPlexUrlPolicy.mediaType(e.pageUrl);if(kind.isEmpty())kind=e.pageUrl.contains("/episodes/")?"episode":e.pageUrl.contains("/series")?"series":"movie";detail(new FarsiPlexTitle(e.pageUrl,kind,e.title));}else play(e.title,e.url,e.pageUrl);}).show()),lp(-1,60));
+        for(LibraryStore.Entry e:list)content.addView(button(e.title+" · "+PlaybackResumePolicy.time(e.positionMs),false,()->new AlertDialog.Builder(this).setTitle(e.title).setItems(new String[]{"بازکردن عنوان","حذف فقط این مورد"},(d,n)->{if(n==1){new LibraryStore(this).forget(e.pageUrl,e.url);historyScreen();}else if(DataTransfer.page(e.pageUrl)){String kind=FarsiPlexUrlPolicy.mediaType(e.pageUrl);if(!ArchiveMoviesRepository.safePage(e.pageUrl).isEmpty())kind="movie";if(kind.isEmpty())kind=e.pageUrl.contains("/episodes/")?"episode":e.pageUrl.contains("/series")?"series":"movie";detail(new FarsiPlexTitle(e.pageUrl,kind,e.title));}else play(e.title,e.url,e.pageUrl);}).show()),lp(-1,60));
     }
     private void voiceSearch(){
         Intent speech=new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);speech.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);speech.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,ProfileStore.data(this,"player_preferences").getString("voice","fa-IR"));speech.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"نام فیلم یا سریال");

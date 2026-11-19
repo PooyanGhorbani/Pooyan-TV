@@ -1,21 +1,21 @@
-name: Pooyan TV v0.8.1 Debug APK
+name: Pooyan TV v0.8.2 Debug APK
 
 on:
   push:
     branches:
-      - ui/v0.8.1-multi-source
+      - ui/v0.8.2-multi-source
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: v081-debug-apk-${{ github.ref }}
+  group: v082-debug-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-debug-apk:
-    name: Build and upload v0.8.1 debug APK
+    name: Build and upload v0.8.2 debug APK
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -43,7 +43,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build v0.8.1 preview APK
+      - name: Build v0.8.2 preview APK
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Verify APK identity and compute SHA-256
@@ -53,18 +53,18 @@ jobs:
           apk='app/build/outputs/apk/debug/app-debug.apk'
           test -s "$apk"
           badging="$($ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.pooyan.namakadetv.dev081' versionCode='46' versionName='0.8.1'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.pooyan.namakadetv.dev082' versionCode='47' versionName='0.8.2'"
           mkdir -p dist
-          cp "$apk" dist/Pooyan-TV-v0.8.1-MultiSource-Preview.apk
-          (cd dist && sha256sum Pooyan-TV-v0.8.1-MultiSource-Preview.apk > SHA256SUMS.txt)
+          cp "$apk" dist/Pooyan-TV-v0.8.2-MultiSource-Preview.apk
+          (cd dist && sha256sum Pooyan-TV-v0.8.2-MultiSource-Preview.apk > SHA256SUMS.txt)
           cat dist/SHA256SUMS.txt
 
       - name: Upload APK and checksum as a preview artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-v0.8.1-MultiSource-Preview-APK
+          name: Pooyan-TV-v0.8.2-MultiSource-Preview-APK
           path: |
-            dist/Pooyan-TV-v0.8.1-MultiSource-Preview.apk
+            dist/Pooyan-TV-v0.8.2-MultiSource-Preview.apk
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
