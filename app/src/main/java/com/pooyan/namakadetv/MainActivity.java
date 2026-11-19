@@ -120,32 +120,87 @@ public final class MainActivity extends Activity {
             float sc=TvUi.focusScale(this,focused?1.06f:1f);v.animate().scaleX(sc).scaleY(sc).setDuration(TvUi.reducedMotion(this)?0:120).start();
             v.setElevation(focused?dp(10):0);
         });
-        v.setTag(title);v.setOnClickListener(view->onClick.run());TvUi.remoteClick(v);return v;
+        v.setTag(title);v.setOnClickListener(view->onClick.run());
+        v.setOnKeyListener((view,key,event)->{
+            if(TvUi.activate(view,key,event))return true;
+            if(event.getAction()==KeyEvent.ACTION_DOWN&&key==KeyEvent.KEYCODE_DPAD_UP&&"home-primary".equals(view.getTag())){
+                return focusNavigation("خانه");
+            }
+            return false;
+        });
+        return v;
     }
     private void gap(LinearLayout l,int width){l.addView(new View(this),lp(width,1));}
     private void begin(String destination){
         heroHandler.removeCallbacks(rotateHero);
         screen=destination;generation++;root.removeAllViews();
-        LinearLayout outer=vertical();root.addView(outer,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout navigation=horizontal();navigationBar=navigation;navigation.setPadding(dp(41),dp(13),dp(32),dp(8));
-        navigation.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xFF0C0C11,0xFF07070A}));
-        TextView brand=text("POOYAN",24,TEAL,true);brand.setLetterSpacing(.07f);
-        navigation.addView(brand,lp(179,47));
-        navigation.addView(button("خانه",destination.equals("home"),this::home),lp(90,41));gap(navigation,7);
-        navigation.addView(button("فیلم‌ها",destination.equals("movies"),()->browse("movie")),lp(104,41));gap(navigation,7);
-        navigation.addView(button("سریال‌ها",destination.equals("series"),()->browse("series")),lp(113,41));gap(navigation,7);
-        navigation.addView(button("لیست من",destination.equals("favorites"),this::favorites),lp(125,41));
-        navigation.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
-        navigation.addView(button("⌕  جست‌وجو",destination.equals("search"),this::askSearch),lp(137,41));gap(navigation,9);
-        navigation.addView(button("⚙",false,this::settings),lp(53,41));
-        outer.addView(navigation,lp(-1,65));
-        navigation.getChildAt(1).requestFocus();
+        LinearLayout outer=horizontal();outer.setTag("ultimate-shell");root.addView(outer,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout page=vertical();page.setTag("page-content");
         ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);
-        content=vertical();content.setPadding(dp(40),dp(6),dp(36),dp(35));
+        content=vertical();content.setPadding(dp(30),dp(10),dp(28),dp(35));
         scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
-        outer.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         status=text("",12,MUTED,false);status.setPadding(dp(42),0,0,dp(4));
-        status.setVisibility(View.GONE);outer.addView(status,lp(-1,24));
+        status.setVisibility(View.GONE);page.addView(status,lp(-1,24));
+        outer.addView(page,new LinearLayout.LayoutParams(0,-1,1));
+
+        LinearLayout navigation=vertical();navigationBar=navigation;navigation.setTag("side-navigation");
+        navigation.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+        navigation.setPadding(dp(10),dp(16),dp(10),dp(12));
+        navigation.setBackgroundColor(0xFF111621);
+        navigation.setFocusable(false);
+        navigation.addView(text("POOYAN TV",18,WHITE,true),lp(-1,42));
+        navigation.addView(text("سینمای خانگی",10,MUTED,false),lp(-1,25));
+        View divider=new View(this);divider.setBackgroundColor(0xFF283142);
+        LinearLayout.LayoutParams dividerLp=lp(-1,1);dividerLp.topMargin=dp(10);dividerLp.bottomMargin=dp(12);navigation.addView(divider,dividerLp);
+        String active=destination.equals("movies")||destination.equals("detail")&&selected!=null&&"movie".equals(selected.kind)?"فیلم‌ها":
+                destination.equals("series")||destination.equals("detail")&&selected!=null&&"series".equals(selected.kind)?"سریال‌ها":
+                destination.equals("favorites")?"فهرست من":destination.equals("search")?"جست‌وجو":destination.equals("profiles")?"پروفایل‌ها":"خانه";
+        addNavigationItem(navigation,"⌂","خانه",active.equals("خانه"),this::home);
+        addNavigationItem(navigation,"▣","فیلم‌ها",active.equals("فیلم‌ها"),()->browse("movie"));
+        addNavigationItem(navigation,"▤","سریال‌ها",active.equals("سریال‌ها"),()->browse("series"));
+        addNavigationItem(navigation,"♡","فهرست من",active.equals("فهرست من"),this::favorites);
+        addNavigationItem(navigation,"⌕","جست‌وجو",active.equals("جست‌وجو"),this::askSearch);
+        addNavigationItem(navigation,"◉","پروفایل‌ها",active.equals("پروفایل‌ها"),()->chooseProfile(false));
+        View spacer=new View(this);navigation.addView(spacer,new LinearLayout.LayoutParams(1,0,1));
+        addNavigationItem(navigation,"⚙","تنظیمات",false,this::settings);
+        outer.addView(navigation,lp(176,-1));
+        for(int i=0;i<navigation.getChildCount();i++){
+            View child=navigation.getChildAt(i);if(!child.isFocusable())continue;
+            child.setOnKeyListener((v,key,event)->{
+                if(TvUi.activate(v,key,event))return true;
+                if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;
+                if(key==KeyEvent.KEYCODE_DPAD_LEFT){View target=firstContentFocus();if(target!=null){target.requestFocus();return true;}}
+                return false;
+            });
+            if(child.getTag()!=null&&child.getTag().equals("nav:"+active))child.requestFocus();
+        }
+    }
+    private void addNavigationItem(LinearLayout navigation,String icon,String label,boolean active,Runnable action){
+        TextView item=button(icon+"   "+label,active,action);item.setTag("nav:"+label);
+        item.setTextSize(13);item.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
+        item.setPadding(dp(12),0,dp(12),0);item.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        item.setContentDescription(label);LinearLayout.LayoutParams params=lp(-1,45);params.bottomMargin=dp(5);navigation.addView(item,params);
+    }
+    private View firstContentFocus(){
+        if(content==null)return null;
+        return findFirstFocusable(content);
+    }
+    private View findFirstFocusable(ViewGroup parent){
+        for(int i=0;i<parent.getChildCount();i++){
+            View child=parent.getChildAt(i);if(child.getVisibility()!=View.VISIBLE)continue;
+            if(child.isFocusable())return child;
+            if(child instanceof ViewGroup){View nested=findFirstFocusable((ViewGroup)child);if(nested!=null)return nested;}
+        }
+        return null;
+    }
+    private boolean focusNavigation(String label){
+        if(navigationBar==null)return false;
+        for(int i=0;i<navigationBar.getChildCount();i++){
+            View child=navigationBar.getChildAt(i);
+            if(child.getTag()!=null&&child.getTag().equals("nav:"+label))return child.requestFocus();
+        }
+        return false;
     }
     private void info(String value){
         if(status==null)return;
@@ -188,17 +243,17 @@ public final class MainActivity extends Activity {
         story.setPadding(dp(35),dp(15),dp(22),dp(20));
         FrameLayout.LayoutParams storyParams=new FrameLayout.LayoutParams(dp(680),-1,Gravity.START);
         hero.addView(story,storyParams);
-        TextView eyebrow=text("POOYAN TV  •  ORIGINAL CINEMA EXPERIENCE",12,0xFFFF8087,true);
+        TextView eyebrow=text("POOYAN TV",12,0xFFFF8087,true);
         eyebrow.setLetterSpacing(.06f);story.addView(eyebrow,lp(-1,32));
-        featuredTitle=text("یک شب سینمایی، فقط برای تو",37,WHITE,true);
+        featuredTitle=text("در حال دریافت کاتالوگ",37,WHITE,true);
         featuredTitle.setMaxLines(2);featuredTitle.setMinHeight(dp(60));story.addView(featuredTitle,lp(-1,-2));
-        featuredDescription=text("تازه‌ترین فیلم‌ها و سریال‌های ایرانی را کشف کن.",16,0xFFD7D7DD,false);
+        featuredDescription=text("عنوان و اطلاعات فقط از داده‌های موجود در کاتالوگ نمایش داده می‌شوند.",16,0xFFD7D7DD,false);
         featuredDescription.setMaxLines(3);featuredDescription.setEllipsize(TextUtils.TruncateAt.END);story.addView(featuredDescription,lp(-1,-2));
         LinearLayout actions=horizontal();heroActions=actions;actions.setTag("hero-actions");
-        actions.addView(button("▶  تماشا",true,()->{
+        actions.addView(button("فیلم‌ها",true,()->{
             if(featured!=null)detail(featured);else browse("movie");
         }),lp(161,50));gap(actions,11);
-        actions.addView(button("اطلاعات بیشتر",false,()->{
+        actions.addView(button("سریال‌ها",false,()->{
             if(featured!=null)detail(featured);else browse("series");
         }),lp(177,50));
         actions.getChildAt(0).setTag("home-primary");
@@ -212,7 +267,7 @@ public final class MainActivity extends Activity {
             return false;
         });
         story.addView(actions,lp(-1,53));
-        heroIndicator=text("پیشنهادها در حال دریافت‌اند",12,0xFFFFCFD1,false);
+        heroIndicator=text("",12,0xFFFFCFD1,false);
         heroIndicator.setContentDescription("پیشنهادهای صفحهٔ خانه");
         LinearLayout.LayoutParams indicatorParams=lp(-1,32);indicatorParams.topMargin=dp(6);
         story.addView(heroIndicator,indicatorParams);
@@ -221,8 +276,8 @@ public final class MainActivity extends Activity {
         continueSlot=vertical();content.addView(continueSlot,lp(-1,-2));
         addContinueWatching();
         continueSlot.setVisibility(preferences.getBoolean("home_continue",true)?View.VISIBLE:View.GONE);
-        content.addView(button("🎲 سورپرایزم کن! · پیشنهاد برای امشب",false,this::surpriseMe),lp(395,48));
-        title("تازه‌اضافه‌شده‌ها","");rail("movie");
+        content.addView(button("پیشنهاد از کاتالوگ",false,this::surpriseMe),lp(285,48));
+        title("فیلم‌ها","");rail("movie");
         movieSlot=vertical();content.addView(movieSlot,lp(-1,-2));
         favoriteSlot=vertical();content.addView(favoriteSlot,lp(-1,-2));
         recommendSlot=vertical();content.addView(recommendSlot,lp(-1,-2));
@@ -255,9 +310,12 @@ public final class MainActivity extends Activity {
         for(int i=0;i<heroSlides.size();i++)if(heroSlides.get(i).url.equals(old)){heroIndex=i;break;}
         if(heroSlides.isEmpty()){
             featured=null;heroIndicator.setText(HomeHeroPolicy.label(0,0));
-            featuredTitle.setText("یک شب سینمایی، فقط برای تو");
-            featuredDescription.setText("پیشنهادهای تازه در حال دریافت‌اند.");
+            featuredTitle.setText("عنوانی برای نمایش موجود نیست");
+            featuredDescription.setText("با دریافت داده از کاتالوگ، عنوان‌های واقعی اینجا نمایش داده می‌شوند.");
             featuredBackdrop.setImageDrawable(null);
+            View movies=root.findViewWithTag("home-primary"),series=root.findViewWithTag("home-more");
+            if(movies instanceof TextView)((TextView)movies).setText("فیلم‌ها");
+            if(series instanceof TextView)((TextView)series).setText("سریال‌ها");
         }else updateFeatured(heroSlides.get(heroIndex));
         scheduleHeroRotation();
     }
@@ -281,7 +339,10 @@ public final class MainActivity extends Activity {
         boolean changed=featured==null||!item.url.equals(featured.url);
         featured=item;
         featuredTitle.setText(item.name);
-        featuredDescription.setText(item.description.isEmpty()?"پیشنهادی از فیلم‌ها و سریال‌های موجود":item.description);
+        featuredDescription.setText(item.description);
+        TextView primary=root.findViewWithTag("home-primary"),more=root.findViewWithTag("home-more");
+        if(primary!=null)primary.setText("جزئیات");
+        if(more!=null)more.setText("اطلاعات");
         if(heroIndicator!=null)heroIndicator.setText(HomeHeroPolicy.label(heroIndex,heroSlides.size()));
         if(changed && heroFrame!=null){
             // Replace the ImageView rather than keeping unbounded pre-draw listeners.
@@ -406,7 +467,7 @@ public final class MainActivity extends Activity {
         ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
         poster.setBackgroundColor(android.graphics.Color.TRANSPARENT);poster.setContentDescription(item.name);
         FrameLayout art=new FrameLayout(this);art.setBackground(shape(0xFF2A292F,10,false));
-        TextView fallback=text(item.name,18,MUTED,true);fallback.setGravity(Gravity.CENTER);fallback.setPadding(dp(10),dp(10),dp(10),dp(10));art.addView(fallback,new FrameLayout.LayoutParams(-1,-1));art.addView(poster,new FrameLayout.LayoutParams(-1,-1));cell.addView(art,lp(160,217));
+        TextView fallback=text("پوستر در دسترس نیست",13,MUTED,false);fallback.setGravity(Gravity.CENTER);fallback.setPadding(dp(10),dp(10),dp(10),dp(10));art.addView(fallback,new FrameLayout.LayoutParams(-1,-1));art.addView(poster,new FrameLayout.LayoutParams(-1,-1));cell.addView(art,lp(160,217));
         if(!item.poster.isEmpty())images.load(poster,item.poster);
         TextView name=text(item.name,14,WHITE,true);name.setSingleLine(true);name.setEllipsize(TextUtils.TruncateAt.END);
         cell.addView(name,lp(-1,27));
@@ -836,15 +897,22 @@ public final class MainActivity extends Activity {
         if(searchTerm.length()>100)searchTerm=searchTerm.substring(0,100);
         rememberSearch(searchTerm);
         filterKind="";filterGenre="";filterYear=0;filterRating=0;searchRaw.clear();
-        begin("search");title("نتایج برای «"+searchTerm+"»","جست‌وجوی یکپارچه؛ فیلترها فقط روی نتایج دریافت‌شده اعمال می‌شوند");
+        begin("search");title("جست‌وجو","نتایج از کاتالوگ دریافت می‌شوند؛ فیلترها فقط روی دادهٔ واقعی اعمال می‌شوند.");
+        EditText query=new EditText(this);query.setTag("search-query");query.setSingleLine(true);query.setText(searchTerm);
+        query.setHint("نام فیلم یا سریال");query.setTextSize(19);query.setTextColor(WHITE);query.setHintTextColor(MUTED);
+        query.setPadding(dp(20),dp(8),dp(20),dp(8));query.setBackground(shape(0xFF171D28,16,true));
+        query.setImeOptions(EditorInfo.IME_ACTION_SEARCH);query.setSelectAllOnFocus(false);
+        query.setOnEditorActionListener((v,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH||event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER){search(query.getText().toString());return true;}return false;});
+        content.addView(query,lp(-1,58));
         LinearLayout searchActions=horizontal();
-        searchActions.addView(button("⌨ جست‌وجوی متنی",false,this::askSearch),lp(225,50));
-        searchActions.addView(button("🎙 جست‌وجوی صوتی",false,this::voiceSearch),lp(205,50));
-        searchActions.addView(button("⚙ فیلترها",false,this::searchFilters),lp(155,50));
-        searchActions.addView(button("سابقه",false,this::searchHistory),lp(125,50));
+        searchActions.addView(button("جست‌وجو",true,()->search(query.getText().toString())),lp(145,50));gap(searchActions,8);
+        searchActions.addView(button("جست‌وجوی صوتی",false,this::voiceSearch),lp(190,50));gap(searchActions,8);
+        searchActions.addView(button("فیلترها",false,this::searchFilters),lp(135,50));gap(searchActions,8);
+        searchActions.addView(button("سابقه",false,this::searchHistory),lp(110,50));
         content.addView(searchActions,lp(-1,58));
         LinearLayout results=vertical();searchResultsView=results;content.addView(results,lp(-1,-2));
         results.addView(text("در حال جست‌وجو…",15,MUTED,false),lp(-1,75));
+        if(offlineUiTest){searchRaw.clear();renderFilteredSearch(null);return;}
         int token=generation;
         source.search(searchTerm,(items,error)->{
             if(destroyed||generation!=token)return;
@@ -860,8 +928,8 @@ public final class MainActivity extends Activity {
         searchResultsView.removeAllViews();
         List<FarsiPlexTitle> filtered=DiscoveryPolicy.filter(searchRaw,
             new DiscoveryPolicy.Filter(filterKind,filterGenre,filterYear,filterRating));
-        if(filtered.isEmpty())searchResultsView.addView(text(error!=null?error:
-            "با این فیلتر عنوانی پیدا نشد. فیلترها را پاک کن یا جست‌وجو را تغییر بده.",15,MUTED,false),lp(-1,85));
+        if(filtered.isEmpty()){TextView empty=text(error!=null?error:
+            "با این فیلتر عنوانی پیدا نشد. فیلترها را پاک کن یا جست‌وجو را تغییر بده.",15,MUTED,false);empty.setTag("search-empty");searchResultsView.addView(empty,lp(-1,85));}
         else{searchResultsView.addView(text(filtered.size()+" عنوان از "+searchRaw.size()+" نتیجه",14,MUTED,false),lp(-1,37));
             showGrid(searchResultsView,filtered);}
     }
@@ -997,10 +1065,30 @@ public final class MainActivity extends Activity {
     }
     private void switchProfile(String id){new ProfileStore(this).select(id);preferences=ProfileStore.data(this,"pooyan_farsiplex_v04");returnView=null;parentSeries=null;detailRequest++;home();}
     private void chooseProfile(boolean manage){
-        ProfileStore profiles=new ProfileStore(this);JSONArray list=profiles.list();String[] names=new String[list.length()];
-        for(int i=0;i<names.length;i++){JSONObject o=list.optJSONObject(i);names[i]=ProfileStore.avatar(o.optInt("avatar"))+"  "+o.optString("name");}
-        new AlertDialog.Builder(this).setTitle("چه کسی تماشا می‌کند؟").setItems(names,(d,i)->switchProfile(list.optJSONObject(i).optString("id")))
-            .setPositiveButton("ایجاد پروفایل",(d,w)->editProfile(null)).setNeutralButton("ویرایش پروفایل فعال",(d,w)->editProfile(profiles.active())).setNegativeButton("بازگشت",null).show();
+        ProfileStore profiles=new ProfileStore(this);JSONArray list=profiles.list();
+        begin("profiles");title("پروفایل‌ها","هر پروفایل فهرست، تنظیمات و پیشرفت تماشای خودش را دارد.");
+        LinearLayout row=null;int inRow=0;
+        for(int i=0;i<list.length();i++){
+            JSONObject item=list.optJSONObject(i);if(item==null)continue;
+            String id=item.optString("id"),name=item.optString("name"),avatar=ProfileStore.avatar(item.optInt("avatar"));
+            boolean active=id.equals(profiles.active());
+            if(row==null||inRow>=3){row=horizontal();row.setGravity(Gravity.TOP);LinearLayout.LayoutParams rp=lp(-1,225);rp.bottomMargin=dp(16);content.addView(row,rp);inRow=0;}
+            LinearLayout card=vertical();card.setTag("profile:"+id);card.setGravity(Gravity.CENTER);card.setFocusable(true);card.setClickable(true);
+            card.setPadding(dp(14),dp(15),dp(14),dp(12));card.setBackground(shape(active?0xFF202431:PANEL,20,active));
+            TextView avatarView=text(avatar,37,active?0xFFFFCFD1:WHITE,true);avatarView.setGravity(Gravity.CENTER);
+            card.addView(avatarView,lp(-1,64));
+            TextView profileName=text(name,17,WHITE,true);profileName.setGravity(Gravity.CENTER);profileName.setMaxLines(1);profileName.setEllipsize(TextUtils.TruncateAt.END);
+            card.addView(profileName,lp(-1,34));
+            TextView state=text(active?"پروفایل فعال":"انتخاب پروفایل",12,active?0xFFFFCFD1:MUTED,false);state.setGravity(Gravity.CENTER);
+            card.addView(state,lp(-1,28));
+            card.setOnFocusChangeListener((v,focus)->{card.setBackground(shape(focus?0xFF29212B:active?0xFF202431:PANEL,20,focus||active));card.setScaleX(focus?1.045f:1f);card.setScaleY(focus?1.045f:1f);});
+            card.setOnClickListener(v->{if(manage&&active)editProfile(id);else switchProfile(id);});TvUi.remoteClick(card);
+            LinearLayout.LayoutParams cp=lp(210,190);cp.rightMargin=dp(14);row.addView(card,cp);inRow++;
+        }
+        LinearLayout actions=horizontal();content.addView(actions,lp(-1,60));
+        actions.addView(button("ایجاد پروفایل",true,()->editProfile(null)),lp(190,50));gap(actions,10);
+        actions.addView(button("ویرایش پروفایل فعال",false,()->editProfile(profiles.active())),lp(245,50));gap(actions,10);
+        actions.addView(button("بازگشت به خانه",false,this::home),lp(190,50));
     }
     private void editProfile(String id){
         ProfileStore store=new ProfileStore(this);EditText name=new EditText(this);name.setSingleLine(true);name.setHint("نام پروفایل، حداکثر ۳۰ حرف");final int[] avatar={0};

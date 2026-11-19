@@ -54,6 +54,7 @@ public final class PlayerActivity extends Activity {
     public static final String EXTRA_TITLE = "video_title";
     public static final String EXTRA_PAGE_URL = "source_page";
     public static final String EXTRA_USER_AGENT = "user_agent";
+    static final String EXTRA_UI_PREVIEW = "com.pooyan.namakadetv.extra.PLAYER_UI_PREVIEW";
     public static final String EXTRA_COOKIE = "stream_cookie"; // Reserved; deliberately not forwarded across redirects.
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -108,12 +109,16 @@ public final class PlayerActivity extends Activity {
         name = getIntent().getStringExtra(EXTRA_TITLE);
         pageUrl = getIntent().getStringExtra(EXTRA_PAGE_URL);
         userAgent = getIntent().getStringExtra(EXTRA_USER_AGENT);
+        profilePrefs=ProfileStore.data(this,"player_preferences");
+        boolean preview=BuildConfig.DEBUG&&getIntent().getBooleanExtra(EXTRA_UI_PREVIEW,false);
+        if(preview){
+            name="";initLayout();stateView.setText("برای این عنوان منبع پخش معتبری در دسترس نیست.");return;
+        }
         if (name == null || name.trim().isEmpty()) name = "Pooyan TV Video";
         if (!StreamDetector.isHttpsUrl(streamUrl)) {
             Toast.makeText(this, "آدرس ویدئو باید HTTPS باشد.", Toast.LENGTH_LONG).show();
             finish(); return;
         }
-        profilePrefs=ProfileStore.data(this,"player_preferences");
         library = new LibraryStore(this);
         candidates=CandidateCodec.decode(getIntent().getStringExtra("candidates"));
         if(candidates.isEmpty())candidates.add(new PlaybackCandidate(streamUrl,pageUrl,0,false));
@@ -177,8 +182,8 @@ public final class PlayerActivity extends Activity {
 
         controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.HORIZONTAL);
-        controls.setPadding(dp(20), dp(14), dp(20), dp(14));
-        controls.setBackground(TvUi.bg(0xE6101016, 24, this));
+        controls.setPadding(dp(16), dp(10), dp(16), dp(10));
+        controls.setBackground(TvUi.bg(0xD910141D, 24, this));
         HorizontalScrollView scroller = new HorizontalScrollView(this);
         scroller.setHorizontalScrollBarEnabled(false);
         scroller.setFillViewport(true);
@@ -187,8 +192,8 @@ public final class PlayerActivity extends Activity {
         barLp.setMargins(dp(25), 0, dp(25), dp(25));
         timelinePanel=new LinearLayout(this);timelinePanel.setOrientation(LinearLayout.VERTICAL);
         timelinePanel.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        timelinePanel.setPadding(dp(16),dp(10),dp(16),dp(8));
-        timelinePanel.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xB308080B,0xFA08080B}));
+        timelinePanel.setPadding(dp(18),dp(12),dp(18),dp(10));
+        timelinePanel.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xAA080B12,0xF510141D}));
         timelineText=TvUi.text(this,"00:00 / --:--    باقی‌مانده: --:--",14,Color.WHITE,false);
         timelineText.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);timelinePanel.addView(timelineText);
         seekBar=new SeekBar(this);seekBar.setMax(10000);seekBar.setKeyProgressIncrement(100);
@@ -209,27 +214,16 @@ public final class PlayerActivity extends Activity {
         });
         timelinePanel.addView(scroller);root.addView(timelinePanel,barLp);
 
-        addControl("✕ برگشت", this::finish);
-        playButton = addControl("Ⅱ مکث", this::togglePlayback);
-        addControl("↶ ۱۰ ثانیه", () -> seekBy(-10000));
-        addControl("↷ ۳۰ ثانیه", () -> seekBy(30000));
-        addControl("⏭ پرش دستی ۹۰ ثانیه", () -> seekBy(90000));
-        addControl("سرعت", this::chooseSpeed);
-        addControl("کیفیت", () -> chooseTrack(C.TRACK_TYPE_VIDEO));
-        addControl("صدا", () -> chooseTrack(C.TRACK_TYPE_AUDIO));
-        addControl("زیرنویس", () -> chooseTrack(C.TRACK_TYPE_TEXT));
-        addControl("+ زیرنویس", this::addSubtitle);
-        addControl("اندازهٔ زیرنویس",this::subtitleSize);
-        addControl("تأخیر زیرنویس",this::subtitleDelay);
-        addControl("جای زیرنویس",this::subtitlePosition);
-        addControl("سبک زیرنویس",this::subtitleStyle);
-        addControl("قسمت بعد",()->showNext(true));
-        addControl("اندازه تصویر", () -> {
-            zoomMode = !zoomMode;
-            playerView.setResizeMode(zoomMode ? AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    : AspectRatioFrameLayout.RESIZE_MODE_FIT);
-            toast(zoomMode ? "بزرگنمایی (ممکن است تصویر برش بخورد)" : "نمایش کامل تصویر");
-        });
+        addControl("×", this::finish);
+        playButton = addControl("Ⅱ", this::togglePlayback);
+        addControl("− ۱۰", () -> seekBy(-10000));
+        addControl("+ ۳۰", () -> seekBy(30000));
+        addControl("⋯", this::showMoreControls);
+        for(int i=0;i<controls.getChildCount();i++){
+            final View v=controls.getChildAt(i);
+            v.setContentDescription(i==0?"بازگشت":i==1?"پخش یا مکث":i==2?"۱۰ ثانیه عقب":i==3?"۳۰ ثانیه جلو":"گزینه‌های بیشتر پلیر");
+        }
+        /* Additional playback, track and subtitle options stay available on demand. */
         for(int i=0;i<controls.getChildCount();i++){
             final View v=controls.getChildAt(i);
             v.setOnKeyListener((view,key,event)->{
@@ -242,6 +236,16 @@ public final class PlayerActivity extends Activity {
             });
         }
         controls.getChildAt(1).requestFocus();
+    }
+    private void showMoreControls(){
+        String[] labels={"پرش دستی ۹۰ ثانیه","سرعت پخش","کیفیت تصویر","مسیر صدا","زیرنویس","افزودن زیرنویس","اندازهٔ زیرنویس","تأخیر زیرنویس","جای زیرنویس","سبک زیرنویس","قسمت بعد","اندازهٔ تصویر"};
+        Runnable[] actions={()->seekBy(90000),this::chooseSpeed,()->chooseTrack(C.TRACK_TYPE_VIDEO),()->chooseTrack(C.TRACK_TYPE_AUDIO),()->chooseTrack(C.TRACK_TYPE_TEXT),this::addSubtitle,this::subtitleSize,this::subtitleDelay,this::subtitlePosition,this::subtitleStyle,()->showNext(true),()->{
+            zoomMode = !zoomMode;
+            playerView.setResizeMode(zoomMode ? AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    : AspectRatioFrameLayout.RESIZE_MODE_FIT);
+            toast(zoomMode ? "بزرگنمایی (ممکن است تصویر برش بخورد)" : "نمایش کامل تصویر");
+        }};
+        new AlertDialog.Builder(this).setTitle("کنترل‌های پخش").setItems(labels,(dialog,which)->{actions[which].run();revealControls();}).setNegativeButton("بستن",null).show();
     }
     private TextView addControl(String label, Runnable run) {
         TextView v = TvUi.focusButton(this, label, false, () -> { run.run(); revealControls(); });

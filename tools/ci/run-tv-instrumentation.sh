@@ -61,6 +61,11 @@ gradle_status=${PIPESTATUS[0]}
 set -e
 printf 'finished=%s\ngradle_exit=%s\n' "$(date --iso-8601=ns)" "$gradle_status" >> "$diag_dir/test-metadata.log"
 if [[ "$mode" == "full" || "$mode" == "logical-720" ]]; then
+  mkdir -p "$diag_dir/previews"
+  adb -s emulator-5554 pull /sdcard/Android/data/com.pooyan.namakadetv.dev070/files "$diag_dir/previews/app-files" \
+    > "$diag_dir/previews/pull.log" 2>&1 || true
+fi
+if [[ "$mode" == "full" || "$mode" == "logical-720" ]]; then
   awk '/DetailPreview: PNG_CHUNK:[0-9][0-9][0-9][0-9]:/ { sub(/^.*DetailPreview: PNG_CHUNK:[^:]*:/, ""); printf "%s", $0; found=1 } END { if(found) printf "\n" }' "$diag_dir/logcat-live.log" | base64 --decode > "$diag_dir/emulator-detail.png" 2> "$diag_dir/screenshot-pull.log" || true
   if ! grep -q 'DetailPreview: PNG_END' "$diag_dir/logcat-live.log" || [[ ! -s "$diag_dir/emulator-detail.png" ]]; then
     printf 'No complete rendered details screenshot in captured Logcat; see %s/screenshot-pull.log\n' "$diag_dir" | tee -a "$diag_dir/test-metadata.log"

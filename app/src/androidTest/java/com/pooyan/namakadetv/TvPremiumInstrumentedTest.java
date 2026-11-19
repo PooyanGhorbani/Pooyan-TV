@@ -22,6 +22,11 @@ public class TvPremiumInstrumentedTest {
  private void set(Object owner,String name,Object value){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);f.set(owner,value);}catch(Exception e){throw new AssertionError(e);}}
  private Object invoke(Object owner,String name,Class<?>[] types,Object...args){try{Method m=owner.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(owner,args);}catch(Exception e){throw new AssertionError(e);}}
  private void key(int code){InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(code);InstrumentationRegistry.getInstrumentation().waitForIdleSync();}
+ private void capturePreview(String name)throws Exception{
+  InstrumentationRegistry.getInstrumentation().waitForIdleSync();android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull("Screenshot captured from emulator",image);
+  java.io.File directory=context().getExternalFilesDir(null);assertNotNull(directory);java.io.File file=new java.io.File(directory,name);
+  try(java.io.FileOutputStream out=new java.io.FileOutputStream(file)){assertTrue("PNG screenshot written",image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}finally{image.recycle();}
+ }
  @Test public void posterOrderDirectionAndSelectAreStable(){
   final LinearLayout[] rows=new LinearLayout[2];AtomicInteger clicks=new AtomicInteger();
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
@@ -157,6 +162,7 @@ public class TvPremiumInstrumentedTest {
    }
    if(error[0].contains("IO_"))org.junit.Assume.assumeTrue("Live upstream unavailable during playback: "+error[0],false);
    assertTrue("Actual video output required; player error="+error[0],decoded[0]);
+   capturePreview("ultimate-player.png");
    scenario.onActivity(a->{
     androidx.media3.exoplayer.ExoPlayer player=(androidx.media3.exoplayer.ExoPlayer)field(a,"player");assertNotNull("Audio format must be detected",player.getAudioFormat());
     invoke(a,"togglePlayback",new Class[]{});assertFalse(player.getPlayWhenReady());invoke(a,"seekBy",new Class[]{long.class},10000L);assertTrue(player.getCurrentPosition()>=9000);
@@ -238,9 +244,55 @@ public class TvPremiumInstrumentedTest {
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
    InstrumentationRegistry.getInstrumentation().waitForIdleSync();Thread.sleep(2500);
    scenario.onActivity(a->{assertFalse(a.isFinishing());FrameLayout root=(FrameLayout)field(a,"root");assertNotNull(root.findViewWithTag("home-primary"));});
-   android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(image);
-   java.io.File directory=context().getExternalFilesDir(null);assertNotNull(directory);
-   try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(directory,"emulator-home.png"))){assertTrue(image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}image.recycle();
+   capturePreview("ultimate-home.png");
+  }
+ }
+ @Test public void ultimateSideNavigationAndProfileSelectionWorkWithRemote(){
+  android.content.Intent offline=new android.content.Intent(context(),MainActivity.class).putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offline)){
+   scenario.onActivity(a->{
+    set(a,"destroyed",true);LinearLayout nav=(LinearLayout)field(a,"navigationBar");
+    assertEquals("Six primary destinations plus settings are present",7,nav.getChildCount()-4);
+    View home=nav.findViewWithTag("nav:خانه");assertNotNull(home);assertTrue(home.isFocusable());assertEquals("خانه",home.getContentDescription());
+    assertTrue("Selected Home destination receives focus",home.requestFocus());
+   });
+   key(KeyEvent.KEYCODE_DPAD_LEFT);
+   scenario.onActivity(a->assertEquals("Rail LEFT enters the page content predictably","home-primary",a.getCurrentFocus().getTag()));
+   key(KeyEvent.KEYCODE_DPAD_UP);
+   scenario.onActivity(a->assertEquals("Home hero UP returns to the selected rail item","nav:خانه",a.getCurrentFocus().getTag()));
+   scenario.onActivity(a->{invoke(a,"chooseProfile",new Class[]{boolean.class},false);String id=new ProfileStore(a).active();View active=((FrameLayout)field(a,"root")).findViewWithTag("profile:"+id);assertNotNull("Active saved profile appears as a card",active);assertTrue("Profile card is remotely focusable",active.isFocusable());});
+   key(KeyEvent.KEYCODE_DPAD_CENTER);
+   scenario.onActivity(a->assertEquals("Selecting a profile returns to Home without deleting data","home",field(a,"screen")));
+  }
+ }
+ @Test public void modernSearchKeepsQueryEditableAndReportsEmptyCatalogClearly(){
+  android.content.Intent offline=new android.content.Intent(context(),MainActivity.class).putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offline)){
+   scenario.onActivity(a->{set(a,"destroyed",true);invoke(a,"search",new Class[]{String.class},"عنوان آزمون");FrameLayout root=(FrameLayout)field(a,"root");EditText query=(EditText)root.findViewWithTag("search-query");assertNotNull("Search screen retains an editable query",query);assertEquals("عنوان آزمون",query.getText().toString());assertTrue("Remote search action exists",root.findViewWithTag("جست‌وجو")!=null);assertNotNull("Empty state is visible when no catalog data has been loaded",root.findViewWithTag("search-empty"));});
+  }
+ }
+ @Test public void minimalPlayerKeepsSeekAndAdvancedOptionsAccessible()throws Exception{
+  android.content.Intent preview=new android.content.Intent(context(),PlayerActivity.class).putExtra(PlayerActivity.EXTRA_UI_PREVIEW,true);
+  try(ActivityScenario<PlayerActivity> scenario=ActivityScenario.launch(preview)){
+   scenario.onActivity(a->{LinearLayout controls=(LinearLayout)field(a,"controls");assertEquals("Minimal transport keeps five remote targets",5,controls.getChildCount());assertNotNull("Elapsed/remaining timeline remains available",field(a,"timelineText"));assertNotNull("Seeking remains accessible",field(a,"seekBar"));assertTrue("No-source player state is explicit",((TextView)field(a,"stateView")).getText().toString().contains("منبع پخش"));});
+   capturePreview("ultimate-player-unavailable.png");
+  }
+ }
+ @Test public void capturesMovieSeriesAndSearchFromLiveCatalogWhenAvailable()throws Exception{
+  FarsiPlexTitle[] movie={null},series={null};
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+   for(int attempt=0;attempt<30&&(movie[0]==null||series[0]==null);attempt++){
+    Thread.sleep(500);scenario.onActivity(a->{
+     @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> movies=(java.util.List<FarsiPlexTitle>)field(a,"loadedMovies");
+     @SuppressWarnings("unchecked") java.util.List<FarsiPlexTitle> seriesList=(java.util.List<FarsiPlexTitle>)field(a,"loadedSeries");
+     if(movie[0]==null&&!movies.isEmpty())movie[0]=movies.get(0);if(series[0]==null&&!seriesList.isEmpty())series[0]=seriesList.get(0);
+    });
+   }
+   org.junit.Assume.assumeTrue("Live movie catalog unavailable; no fabricated preview content is substituted",movie[0]!=null);
+   capturePreview("ultimate-home-live.png");
+   scenario.onActivity(a->invoke(a,"detail",new Class[]{FarsiPlexTitle.class},movie[0]));Thread.sleep(5000);capturePreview("ultimate-movie-details.png");
+   scenario.onActivity(a->invoke(a,"search",new Class[]{String.class},movie[0].name));Thread.sleep(4000);capturePreview("ultimate-search.png");
+   if(series[0]!=null){scenario.onActivity(a->invoke(a,"detail",new Class[]{FarsiPlexTitle.class},series[0]));Thread.sleep(6000);capturePreview("ultimate-series-details.png");}
   }
  }
 }
