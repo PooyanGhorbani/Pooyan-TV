@@ -257,13 +257,14 @@ public final class MainActivity extends Activity {
             if(featured!=null)detail(featured);else browse("series");
         }),lp(177,50));
         actions.getChildAt(0).setTag("home-primary");
-        actions.getChildAt(1).setTag("home-more");
+        actions.getChildAt(2).setTag("home-more");
         for(int i=0;i<actions.getChildCount();i++)actions.getChildAt(i).setOnKeyListener((v,k,e)->{
             if(TvUi.activate(v,k,e))return true;
             if(e.getAction()!=KeyEvent.ACTION_DOWN)return false;
+            if(k==KeyEvent.KEYCODE_DPAD_UP&&v==actions.getChildAt(0))return focusNavigation("خانه");
             // Preserve left/right focus between Play and Details. At the edges, change slides.
             if(k==KeyEvent.KEYCODE_DPAD_LEFT && v==actions.getChildAt(0)){advanceHero(-1);return true;}
-            if(k==KeyEvent.KEYCODE_DPAD_RIGHT && v==actions.getChildAt(1)){advanceHero(1);return true;}
+            if(k==KeyEvent.KEYCODE_DPAD_RIGHT && v==actions.getChildAt(2)){advanceHero(1);return true;}
             return false;
         });
         story.addView(actions,lp(-1,53));

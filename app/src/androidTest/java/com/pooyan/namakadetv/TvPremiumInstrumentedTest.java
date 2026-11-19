@@ -162,6 +162,7 @@ public class TvPremiumInstrumentedTest {
    }
    if(error[0].contains("IO_"))org.junit.Assume.assumeTrue("Live upstream unavailable during playback: "+error[0],false);
    assertTrue("Actual video output required; player error="+error[0],decoded[0]);
+   scenario.onActivity(a->invoke(a,"revealControls",new Class[]{}));
    capturePreview("ultimate-player.png");
    scenario.onActivity(a->{
     androidx.media3.exoplayer.ExoPlayer player=(androidx.media3.exoplayer.ExoPlayer)field(a,"player");assertNotNull("Audio format must be detected",player.getAudioFormat());
@@ -274,11 +275,11 @@ public class TvPremiumInstrumentedTest {
  @Test public void minimalPlayerKeepsSeekAndAdvancedOptionsAccessible()throws Exception{
   android.content.Intent preview=new android.content.Intent(context(),PlayerActivity.class).putExtra(PlayerActivity.EXTRA_UI_PREVIEW,true);
   try(ActivityScenario<PlayerActivity> scenario=ActivityScenario.launch(preview)){
-   scenario.onActivity(a->{LinearLayout controls=(LinearLayout)field(a,"controls");assertEquals("Minimal transport keeps five remote targets",5,controls.getChildCount());assertNotNull("Elapsed/remaining timeline remains available",field(a,"timelineText"));assertNotNull("Seeking remains accessible",field(a,"seekBar"));assertTrue("No-source player state is explicit",((TextView)field(a,"stateView")).getText().toString().contains("منبع پخش"));});
+   scenario.onActivity(a->{LinearLayout controls=(LinearLayout)field(a,"controls");assertEquals("Minimal transport keeps five remote targets",5,controls.getChildCount());assertNotNull("Elapsed/remaining timeline remains available",field(a,"timelineText"));assertNotNull("Seeking remains accessible",field(a,"seekBar"));assertTrue("No-source player state is explicit",((TextView)field(a,"stateView")).getText().toString().contains("منبع پخش"));controls.getChildAt(4).performClick();android.app.AlertDialog more=(android.app.AlertDialog)field(a,"advancedDialog");assertTrue("Advanced controls open only on demand",more.isShowing());assertEquals("All legacy controls remain available",12,more.getListView().getCount());more.dismiss();});
    capturePreview("ultimate-player-unavailable.png");
   }
  }
- @Test public void capturesMovieSeriesAndSearchFromLiveCatalogWhenAvailable()throws Exception{
+ @Test public void capturesMovieSeriesAndSearchScreensWithoutInventingCatalogContent()throws Exception{
   FarsiPlexTitle[] movie={null},series={null};
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
    for(int attempt=0;attempt<30&&(movie[0]==null||series[0]==null);attempt++){
@@ -288,11 +289,12 @@ public class TvPremiumInstrumentedTest {
      if(movie[0]==null&&!movies.isEmpty())movie[0]=movies.get(0);if(series[0]==null&&!seriesList.isEmpty())series[0]=seriesList.get(0);
     });
    }
-   org.junit.Assume.assumeTrue("Live movie catalog unavailable; no fabricated preview content is substituted",movie[0]!=null);
    capturePreview("ultimate-home-live.png");
-   scenario.onActivity(a->invoke(a,"detail",new Class[]{FarsiPlexTitle.class},movie[0]));Thread.sleep(5000);capturePreview("ultimate-movie-details.png");
-   scenario.onActivity(a->invoke(a,"search",new Class[]{String.class},movie[0].name));Thread.sleep(4000);capturePreview("ultimate-search.png");
-   if(series[0]!=null){scenario.onActivity(a->invoke(a,"detail",new Class[]{FarsiPlexTitle.class},series[0]));Thread.sleep(6000);capturePreview("ultimate-series-details.png");}
+   final FarsiPlexTitle moviePage=movie[0]!=null?movie[0]:new FarsiPlexTitle("","movie","");
+   scenario.onActivity(a->{if(movie[0]!=null)invoke(a,"detail",new Class[]{FarsiPlexTitle.class},moviePage);else invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},moviePage,true);});Thread.sleep(5000);capturePreview("ultimate-movie-details.png");
+   scenario.onActivity(a->invoke(a,"search",new Class[]{String.class},movie[0]!=null?moviePage.name:"فیلم"));Thread.sleep(4000);capturePreview("ultimate-search.png");
+   final FarsiPlexTitle seriesPage=series[0]!=null?series[0]:new FarsiPlexTitle("","series","");
+   scenario.onActivity(a->{if(series[0]!=null)invoke(a,"detail",new Class[]{FarsiPlexTitle.class},seriesPage);else invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},seriesPage,true);});Thread.sleep(6000);capturePreview("ultimate-series-details.png");
   }
  }
 }

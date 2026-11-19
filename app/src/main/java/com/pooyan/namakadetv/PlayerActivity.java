@@ -71,7 +71,7 @@ public final class PlayerActivity extends Activity {
     private SubtitleView captions;private final CueDelayQueue<List<Cue>> cueQueue=new CueDelayQueue<>();
     private final Runnable cueTicker=new Runnable(){public void run(){if(player!=null){List<Cue> cues=cueQueue.poll(player.getCurrentPosition());if(cues!=null)captions.setCues(cues);}handler.postDelayed(this,100);}};
     private List<FarsiPlexTitle> episodeContext=new ArrayList<>();private FarsiPlexTitle nextEpisode;
-    private UnifiedRepository nextRepository;private CatalogImages nextImages;private AlertDialog nextDialog;
+    private UnifiedRepository nextRepository;private CatalogImages nextImages;private AlertDialog nextDialog,advancedDialog;
     private EpisodeOrder.Countdown nextCountdown;
     private final Runnable nextTicker=new Runnable(){public void run(){if(stopping||nextDialog==null||!nextDialog.isShowing()||nextCountdown==null)return;boolean advance=player!=null&&EpisodeOrder.advancing(player.isPlaying(),player.getPlaybackState()==Player.STATE_ENDED,player.getPlayWhenReady());if(nextCountdown.tick(advance,!stopping)){playNextEpisode();return;}nextDialog.setTitle("قسمت بعد · "+nextCountdown.remaining()+" ثانیه"+(advance?"":" · مکث"));handler.postDelayed(this,1000);}};
     private LibraryStore library;
@@ -245,7 +245,8 @@ public final class PlayerActivity extends Activity {
                     : AspectRatioFrameLayout.RESIZE_MODE_FIT);
             toast(zoomMode ? "بزرگنمایی (ممکن است تصویر برش بخورد)" : "نمایش کامل تصویر");
         }};
-        new AlertDialog.Builder(this).setTitle("کنترل‌های پخش").setItems(labels,(dialog,which)->{actions[which].run();revealControls();}).setNegativeButton("بستن",null).show();
+        advancedDialog=new AlertDialog.Builder(this).setTitle("کنترل‌های پخش").setItems(labels,(dialog,which)->{actions[which].run();revealControls();}).setNegativeButton("بستن",null).create();
+        advancedDialog.show();
     }
     private TextView addControl(String label, Runnable run) {
         TextView v = TvUi.focusButton(this, label, false, () -> { run.run(); revealControls(); });
