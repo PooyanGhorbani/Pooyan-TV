@@ -371,7 +371,11 @@ public class TvPremiumInstrumentedTest {
    scenario.onActivity(a->{LinearLayout nav=(LinearLayout)field(a,"navigationBar");if(isInside(a.getCurrentFocus(),nav))entered[0]=true;else assertEquals("RIGHT first traverses to the adjacent action","detail-alternative",a.getCurrentFocus().getTag());});
    if(!entered[0])key(KeyEvent.KEYCODE_DPAD_RIGHT);
    scenario.onActivity(a->{LinearLayout nav=(LinearLayout)field(a,"navigationBar");assertTrue("D-pad enters the side rail",isInside(a.getCurrentFocus(),nav));assertEquals(TvUi.dp(a,176),nav.getLayoutParams().width);assertTrue("Expanded navigation shows labels",((TextView)nav.findViewWithTag("nav:خانه")).getText().toString().contains("خانه"));});
-   InstrumentationRegistry.getInstrumentation().waitForIdleSync();capturePreview("ultimate-detail-menu-expanded.png");key(KeyEvent.KEYCODE_DPAD_LEFT);
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();Thread.sleep(250);
+   scenario.onActivity(a->{LinearLayout nav=(LinearLayout)field(a,"navigationBar");assertTrue("Expanded rail remains focused after layout settles",isInside(a.getCurrentFocus(),nav));assertEquals(TvUi.dp(a,176),nav.getLayoutParams().width);assertTrue("Rail label remains visible after layout settles",((TextView)nav.findViewWithTag("nav:خانه")).getText().toString().contains("خانه"));});
+   capturePreview("ultimate-detail-menu-expanded.png");
+   scenario.onActivity(a->{LinearLayout nav=(LinearLayout)field(a,"navigationBar");assertTrue("Screenshot is captured while focus is still in the expanded rail",isInside(a.getCurrentFocus(),nav));});
+   key(KeyEvent.KEYCODE_DPAD_LEFT);
    scenario.onActivity(a->{assertEquals("detail-primary",a.getCurrentFocus().getTag());assertEquals(TvUi.dp(a,68),((LinearLayout)field(a,"navigationBar")).getLayoutParams().width);});
    scenario.onActivity(a->invoke(a,"search",new Class[]{String.class},movie[0]!=null?moviePage.name:"فیلم"));Thread.sleep(4000);capturePreview("ultimate-search.png");
    final FarsiPlexTitle seriesPage=series[0]!=null?series[0]:new FarsiPlexTitle("","series","");

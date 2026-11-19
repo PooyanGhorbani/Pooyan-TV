@@ -66,6 +66,7 @@ public final class MainActivity extends Activity {
     private int generation, detailRequest, page=1;
     private LinearLayout continueSlot,detailControls,navigationBar,recommendSlot,favoriteSlot,movieSlot;
     private boolean navigationExpanded=true;
+    private Runnable collapseDetailNavigation;
     private final java.util.concurrent.ExecutorService localIo=java.util.concurrent.Executors.newSingleThreadExecutor();
     private static final int VOICE=730,EXPORT=731,IMPORT=732;
     private boolean returnedFromPlayer;
@@ -174,7 +175,7 @@ public final class MainActivity extends Activity {
             child.setOnKeyListener((v,key,event)->{
                 if(TvUi.activate(v,key,event))return true;
                 if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;
-                if(key==KeyEvent.KEYCODE_DPAD_LEFT){View target=firstContentFocus();if(target!=null){target.requestFocus();return true;}}
+                if(key==KeyEvent.KEYCODE_DPAD_LEFT){View target=firstContentFocus();if(target!=null&&target.requestFocus()){if("detail".equals(screen))setNavigationExpanded(false);return true;}}
                 return false;
             });
             if(!"detail".equals(destination)&&child.getTag()!=null&&child.getTag().equals("nav:"+active))child.requestFocus();
@@ -189,11 +190,15 @@ public final class MainActivity extends Activity {
     }
     private void navigationFocusChanged(boolean focused){
         if(!"detail".equals(screen)||navigationBar==null)return;
-        if(focused){setNavigationExpanded(true);return;}
-        navigationBar.post(()->{if(navigationBar!=null&&!navigationBar.hasFocus())setNavigationExpanded(false);});
+        if(focused){if(collapseDetailNavigation!=null)navigationBar.removeCallbacks(collapseDetailNavigation);setNavigationExpanded(true);return;}
+        LinearLayout rail=navigationBar;
+        if(collapseDetailNavigation!=null)rail.removeCallbacks(collapseDetailNavigation);
+        collapseDetailNavigation=()->{if("detail".equals(screen)&&navigationBar==rail&&!isInside(getCurrentFocus(),rail))setNavigationExpanded(false);};
+        rail.postDelayed(collapseDetailNavigation,120);
     }
     private void setNavigationExpanded(boolean expanded){
         if(navigationBar==null)return;
+        if(!expanded&&collapseDetailNavigation!=null)navigationBar.removeCallbacks(collapseDetailNavigation);
         navigationExpanded=expanded;
         for(int i=0;i<navigationBar.getChildCount();i++){
             View child=navigationBar.getChildAt(i);Object tag=child.getTag();
