@@ -277,7 +277,7 @@ public final class MainActivity extends Activity {
         continueSlot=vertical();content.addView(continueSlot,lp(-1,-2));
         addContinueWatching();
         continueSlot.setVisibility(preferences.getBoolean("home_continue",true)?View.VISIBLE:View.GONE);
-        content.addView(button("پیشنهاد از کاتالوگ",false,this::surpriseMe),lp(285,48));
+        content.addView(button("سورپرایزم کن از کاتالوگ",false,this::surpriseMe),lp(285,48));
         title("فیلم‌ها","");rail("movie");
         movieSlot=vertical();content.addView(movieSlot,lp(-1,-2));
         favoriteSlot=vertical();content.addView(favoriteSlot,lp(-1,-2));
@@ -1086,6 +1086,7 @@ public final class MainActivity extends Activity {
             card.addView(state,lp(-1,28));
             card.setOnFocusChangeListener((v,focus)->{card.setBackground(shape(focus?0xFF29212B:active?0xFF202431:PANEL,20,focus||active));card.setScaleX(focus?1.045f:1f);card.setScaleY(focus?1.045f:1f);});
             card.setOnClickListener(v->{if(manage&&active)editProfile(id);else switchProfile(id);});TvUi.remoteClick(card);
+            if(active)card.post(card::requestFocus);
             LinearLayout.LayoutParams cp=lp(210,190);cp.rightMargin=dp(14);row.addView(card,cp);inRow++;
         }
         LinearLayout actions=horizontal();content.addView(actions,lp(-1,60));
