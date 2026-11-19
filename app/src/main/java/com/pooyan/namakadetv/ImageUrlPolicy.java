@@ -13,9 +13,14 @@ public final class ImageUrlPolicy {
             host=host.toLowerCase(Locale.ROOT);
             if(!host.equals("farsiplex.com")&&!host.equals("www.farsiplex.com")
                 &&!host.equals("namakadeh.com")&&!host.equals("namakade.com")
-                &&!host.equals("media.negahestan.com"))return false;
+                &&!host.equals("media.negahestan.com")
+                &&!host.equals("image.tmdb.org")
+                &&!host.equals("images.metahub.space")
+                &&!host.equals("assets.fanart.tv"))return false;
             String path=u.getPath();
-            return path!=null&&path.toLowerCase(Locale.ROOT).matches(".*\\.(jpg|jpeg|webp|png)");
+            if(path==null)return false;
+            if(host.equals("images.metahub.space") && path.startsWith("/poster/"))return true;
+            return path.toLowerCase(Locale.ROOT).matches(".*\\.(jpg|jpeg|webp|png)");
         }catch(Exception e){return false;}
     }
     public static boolean allowedFor(String item,String poster){

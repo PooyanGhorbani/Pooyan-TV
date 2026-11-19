@@ -1102,8 +1102,10 @@ public final class MainActivity extends Activity {
                 String url=NamakadeCatalog.safeUrl(raw);
                 String kind=j.optString("kind","");
                 if(url.isEmpty()){
-                    url=FarsiPlexUrlPolicy.normalize(FarsiPlexUrlPolicy.SITE,raw);
-                    kind=FarsiPlexUrlPolicy.mediaType(url);
+                    String addonKind=StremioAddonRepository.kindFor(this,raw);
+                    if(!addonKind.isEmpty()){url=raw;kind=addonKind;}
+                    else {url=FarsiPlexUrlPolicy.normalize(FarsiPlexUrlPolicy.SITE,raw);
+                        kind=FarsiPlexUrlPolicy.mediaType(url);}
                 }else if(kind.isEmpty())kind=url.contains("/movies/")?"movie":"series";
                 if(url.isEmpty()||kind.isEmpty())continue;
                 FarsiPlexTitle item=new FarsiPlexTitle(url,kind,j.optString("title"));
@@ -1248,9 +1250,27 @@ public final class MainActivity extends Activity {
                 if("home".equals(screen))home();customizeHome();
             }).setNegativeButton("بازگشت",null).show();
     }
+    private void configureStremioAddon(){
+        android.widget.EditText input=new android.widget.EditText(this);
+        input.setSingleLine(true);
+        input.setText(StremioAddonRepository.configuredManifest(this));
+        input.setHint("https://example.org/manifest.json");
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        new AlertDialog.Builder(this).setTitle("افزونهٔ منابع فیلم و سریال")
+            .setMessage("آدرس HTTPS فایل manifest.json یک افزونهٔ Stremio مجاز را وارد کن. "
+                +"جست‌وجوهای تو به همان افزونه ارسال می‌شوند. برای غیرفعال‌کردن، کادر را خالی بگذار. "
+                +"فقط لینک‌های مستقیم سازگار و بدون DRM استفاده می‌شوند.")
+            .setView(input).setNegativeButton("لغو",null)
+            .setPositiveButton("ذخیره",(dialog,which)->{
+                if(!StremioAddonRepository.configure(this,input.getText().toString())){
+                    Toast.makeText(this,"آدرس معتبر HTTPS با مسیر /manifest.json وارد کن.",Toast.LENGTH_LONG).show();return;
+                }
+                source.invalidate();home();
+            }).show();
+    }
     private void settingsUnlocked(){
         SharedPreferences playerPrefs=ProfileStore.data(this,"player_preferences");ProfileStore profiles=new ProfileStore(this);
-        String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی","نگهداری، آپدیت GitHub و پشتیبان خانوادگی","شخصی‌سازی صفحهٔ خانه","قفل PIN تنظیمات"};
+        String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی","نگهداری، آپدیت GitHub و پشتیبان خانوادگی","شخصی‌سازی صفحهٔ خانه","قفل PIN تنظیمات","افزودن منابع بین‌المللی (Stremio)"};
         new AlertDialog.Builder(this).setTitle("تنظیمات محلی").setItems(options,(d,n)->{switch(n){
             case 0:chooseProfile(true);break;case 1:profiles.picker(!profiles.picker());settingsUnlocked();break;case 2:historyScreen();break;
             case 3:playerPrefs.edit().putBoolean("autoplay",!playerPrefs.getBoolean("autoplay",true)).apply();settingsUnlocked();break;
@@ -1258,7 +1278,7 @@ public final class MainActivity extends Activity {
             case 5:new AlertDialog.Builder(this).setTitle("درصد تماشا برای پایان").setItems(new String[]{"۹۰٪","۹۵٪","۹۷٪","۹۹٪"},(a,i)->new LibraryStore(this).completion(new int[]{90,95,97,99}[i])).show();break;
             case 6:new AlertDialog.Builder(this).setTitle("زبان سرویس گفتار").setItems(new String[]{"فارسی","English"},(a,i)->playerPrefs.edit().putString("voice",i==0?"fa-IR":"en-US").apply()).show();break;
             case 7:transfer(false);break;case 8:transfer(true);break;case 9:configureAI(null);break;case 10:startActivity(new Intent(this,MaintenanceActivity.class));break;
-            case 11:customizeHome();break;case 12:pinSettings();break;
+            case 11:customizeHome();break;case 12:pinSettings();break;case 13:configureStremioAddon();break;
         }}).setNegativeButton("بازگشت",null).show();
     }
     private void historyScreen(){
