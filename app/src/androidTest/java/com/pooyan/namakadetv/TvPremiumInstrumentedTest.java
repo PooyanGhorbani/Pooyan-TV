@@ -366,7 +366,11 @@ public class TvPremiumInstrumentedTest {
    capturePreview("ultimate-home-live.png");
    final FarsiPlexTitle moviePage=movie[0]!=null?movie[0]:new FarsiPlexTitle("","movie","");
    scenario.onActivity(a->{if(movie[0]!=null)invoke(a,"detail",new Class[]{FarsiPlexTitle.class},moviePage);else invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},moviePage,true);});Thread.sleep(5000);capturePreview("ultimate-movie-details.png");
-   scenario.onActivity(a->{LinearLayout nav=(LinearLayout)field(a,"navigationBar");assertEquals(TvUi.dp(a,68),nav.getLayoutParams().width);assertTrue(nav.findViewWithTag("nav:خانه").requestFocus());});
+   scenario.onActivity(a->{FrameLayout root=(FrameLayout)field(a,"root");LinearLayout nav=(LinearLayout)field(a,"navigationBar");assertEquals(TvUi.dp(a,68),nav.getLayoutParams().width);View edge=root.findViewWithTag("detail-alternative");if(edge==null)edge=root.findViewWithTag("detail-back");assertNotNull(edge);assertTrue("Right-edge action can receive D-pad focus",edge.requestFocus());});
+   key(KeyEvent.KEYCODE_DPAD_RIGHT);final boolean[] entered={false};
+   scenario.onActivity(a->{LinearLayout nav=(LinearLayout)field(a,"navigationBar");if(isInside(a.getCurrentFocus(),nav))entered[0]=true;else assertEquals("RIGHT first traverses to the adjacent action","detail-alternative",a.getCurrentFocus().getTag());});
+   if(!entered[0])key(KeyEvent.KEYCODE_DPAD_RIGHT);
+   scenario.onActivity(a->{LinearLayout nav=(LinearLayout)field(a,"navigationBar");assertTrue("D-pad enters the side rail",isInside(a.getCurrentFocus(),nav));assertEquals(TvUi.dp(a,176),nav.getLayoutParams().width);assertTrue("Expanded navigation shows labels",((TextView)nav.findViewWithTag("nav:خانه")).getText().toString().contains("خانه"));});
    InstrumentationRegistry.getInstrumentation().waitForIdleSync();capturePreview("ultimate-detail-menu-expanded.png");key(KeyEvent.KEYCODE_DPAD_LEFT);
    scenario.onActivity(a->{assertEquals("detail-primary",a.getCurrentFocus().getTag());assertEquals(TvUi.dp(a,68),((LinearLayout)field(a,"navigationBar")).getLayoutParams().width);});
    scenario.onActivity(a->invoke(a,"search",new Class[]{String.class},movie[0]!=null?moviePage.name:"فیلم"));Thread.sleep(4000);capturePreview("ultimate-search.png");
