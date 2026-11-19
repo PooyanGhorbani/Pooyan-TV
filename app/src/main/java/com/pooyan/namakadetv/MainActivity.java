@@ -241,7 +241,7 @@ public final class MainActivity extends Activity {
         });
         LinearLayout story=vertical();story.setGravity(Gravity.CENTER_VERTICAL);
         story.setPadding(dp(35),dp(15),dp(22),dp(20));
-        FrameLayout.LayoutParams storyParams=new FrameLayout.LayoutParams(dp(680),-1,Gravity.START);
+        FrameLayout.LayoutParams storyParams=new FrameLayout.LayoutParams(-1,-1,Gravity.START);
         hero.addView(story,storyParams);
         TextView eyebrow=text("POOYAN TV",12,0xFFFF8087,true);
         eyebrow.setLetterSpacing(.06f);story.addView(eyebrow,lp(-1,32));
@@ -635,7 +635,7 @@ public final class MainActivity extends Activity {
         heroFrame.addView(bottomFade,new FrameLayout.LayoutParams(-1,-1));
 
         LinearLayout hero=horizontal();hero.setGravity(Gravity.CENTER_VERTICAL);
-        hero.setPadding(dp(30),dp(15),dp(28),dp(17));
+        hero.setPadding(dp(36),dp(18),dp(34),dp(20));
         heroFrame.addView(hero,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout infoPanel=vertical();infoPanel.setGravity(Gravity.CENTER_VERTICAL);
         hero.addView(infoPanel,new LinearLayout.LayoutParams(0,-1,1));
@@ -654,9 +654,10 @@ public final class MainActivity extends Activity {
         String supporting=item.description;
         if(!item.cast.isEmpty())supporting+=(supporting.isEmpty()?"":"\n")+"بازیگران: "+item.cast;
         if(!item.runtime.isEmpty())supporting+=(supporting.isEmpty()?"":"   ·   ")+"مدت: "+item.runtime;
-        if(supporting.isEmpty())supporting=complete?"توضیحات تکمیلی برای این عنوان در کاتالوگ ثبت نشده است.":"در حال دریافت اطلاعات عنوان…";
+        if(supporting.isEmpty()&&!complete)supporting="در حال دریافت اطلاعات عنوان…";
         TextView summary=text(supporting,15,0xFFD3D7E0,false);
         summary.setTag("detail-description");summary.setMaxLines(3);summary.setEllipsize(TextUtils.TruncateAt.END);
+        if(supporting.trim().isEmpty())summary.setVisibility(View.GONE);
         infoPanel.addView(summary,lp(-1,62));
 
         LibraryStore library=new LibraryStore(this);
@@ -714,7 +715,8 @@ public final class MainActivity extends Activity {
         FrameLayout posterFrame=new FrameLayout(this);posterFrame.setBackground(shape(0xFF181C27,13,false));posterFrame.setClipToOutline(true);
         posterFrame.addView(poster,new FrameLayout.LayoutParams(-1,-1));
         if(!item.poster.isEmpty())images.load(poster,item.poster);
-        LinearLayout.LayoutParams posterParams=lp(205,292);posterParams.leftMargin=dp(22);hero.addView(posterFrame,posterParams);
+        else {TextView noPoster=text("پوستر در دسترس نیست",12,MUTED,false);noPoster.setGravity(Gravity.CENTER);posterFrame.addView(noPoster,new FrameLayout.LayoutParams(-1,-1));}
+        LinearLayout.LayoutParams posterParams=lp(180,258);posterParams.leftMargin=dp(26);hero.addView(posterFrame,posterParams);
         LinearLayout.LayoutParams heroLayout=lp(-1,"series".equals(item.kind)?372:390);
         heroLayout.bottomMargin=dp(12);content.addView(heroFrame,heroLayout);
 
