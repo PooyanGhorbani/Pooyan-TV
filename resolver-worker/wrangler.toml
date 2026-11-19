@@ -1,0 +1,9 @@
+name = "pooyan-tv-resolver"
+main = "index.mjs"
+compatibility_date = "2026-10-01"
+
+# Replace with the exact FarsiPlex-owned/authorized media CDN hostnames after approval.
+# Never use broad wildcards. Do NOT put secrets here.
+[vars]
+MEDIA_ALLOWED_HOSTS = "farsiplex.com,www.farsiplex.com,pl.farsiplex.buzz"
+

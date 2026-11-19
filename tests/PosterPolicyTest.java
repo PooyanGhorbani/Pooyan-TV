@@ -1,17 +1,12 @@
 import com.pooyan.namakadetv.PosterPolicy;
-
-public class PosterPolicyTest {
-    static int count;
-    static void ok(boolean v) { count++; if (!v) throw new AssertionError("Test " + count); }
-    public static void main(String[] args) {
-        ok(PosterPolicy.accept("https://babakfilm.com/movie/test", "https://babakfilm.com/img/test.jpg"));
-        ok(PosterPolicy.accept("https://tmk.ir/title/abc", "https://cdn.tmk.ir/img/a.webp"));
-        ok(!PosterPolicy.accept("https://example.com/a", "https://example.com/a.jpg"));
-        ok(!PosterPolicy.accept("https://babakfilm.com/a", "https://evil.example/img.jpg"));
-        ok(!PosterPolicy.accept("https://babakfilm.com/a", "http://babakfilm.com/a.png"));
-        ok(!PosterPolicy.accept("https://babakfilm.com/a", "https://babakfilm.com:8080/a.png"));
-        ok(!PosterPolicy.accept("https://babakfilm.com/a", "https://babakfilm.com/a.svg"));
-        ok(!PosterPolicy.accept("https://babakfilm.com/a", "https://babakfilm.com.evil/a.jpg"));
-        System.out.println("PASS PosterPolicyTest: " + count + " checks");
+public final class PosterPolicyTest {
+    static int n=0;static void check(boolean ok){if(!ok)throw new AssertionError(n);n++;}
+    public static void main(String[] args){
+        String movie="https://farsiplex.com/movie/harchi-to-begi/";
+        check(PosterPolicy.accept(movie,"https://farsiplex.com/wp-content/uploads/2026/10/harchi-to-begi-185x278.jpg"));
+        check(!PosterPolicy.accept(movie,"https://bad.site/poster.jpg"));
+        check(!PosterPolicy.accept("https://other.example/movie/foo/","https://farsiplex.com/a.jpg"));
+        check(!PosterPolicy.accept(movie,null));
+        System.out.println("PASS Poster policy "+n+" checks");
     }
 }

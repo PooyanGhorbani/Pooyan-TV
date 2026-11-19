@@ -1,0 +1,8 @@
+{
+  "type": "pooyan-source-rules",
+  "schema": 1,
+  "version": 1,
+  "maxAttempts": 3,
+  "httpCooldownSec": 60,
+  "decodeCooldownSec": 600
+}

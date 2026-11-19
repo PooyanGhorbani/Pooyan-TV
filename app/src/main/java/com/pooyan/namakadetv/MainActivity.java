@@ -1,34 +1,23 @@
 package com.pooyan.namakadetv;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
-import android.net.http.SslError;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
+import android.text.InputType;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.webkit.CookieManager;
-import android.webkit.PermissionRequest;
-import android.webkit.SslErrorHandler;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -38,932 +27,1277 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import org.json.JSONArray;
+import org.json.JSONObject;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Set;
 
-/** Pooyan TV: multi-site home + compatible browser + optional native player. */
+/** Pooyan TV: provider-neutral cinematic Android TV interface, remote-first. */
 public final class MainActivity extends Activity {
-    private static final String PREFS = "tv_settings_v2";
-    private static final String START_URL = "start_url"; // legacy preference from v2
-    private static final String ACTIVE_SITE = "active_site_v3";
-    private static final String CUSTOM_NAMAKADE = "namakade_custom_url_v3";
-    private static final String POINTER_MODE = "pointer_mode";
+    private static final int BG=0xFF07070A, PANEL=0xFF18181F, TEAL=0xFFE50914, WHITE=0xFFF6F6F6, MUTED=0xFFB3B3BB;
+    static final String EXTRA_OFFLINE_UI_TEST="com.pooyan.namakadetv.extra.OFFLINE_UI_TEST";
+    private FrameLayout root;
+    private LinearLayout content;
+    private TextView status;
+    private UnifiedRepository source;
+    private FarsiPlexTitle featured;
+    private TextView featuredTitle,featuredDescription;
+    private ImageView featuredBackdrop;
+    private FrameLayout heroFrame;
+    private LinearLayout heroActions;
+    private TextView heroIndicator;
+    private final List<FarsiPlexTitle> heroSlides = new ArrayList<>();
+    private int heroIndex;
+    private final Handler heroHandler = new Handler(Looper.getMainLooper());
+    private final Runnable rotateHero = new Runnable() {
+        @Override public void run() {
+            if (destroyed || !"home".equals(screen)) return;
+            if (heroSlides.size() > 1 && !heroActionsFocused()) advanceHero(1);
+            scheduleHeroRotation();
+        }
+    };
+    private CatalogImages images;
+    private LocalStreams streams;
+    private AiResolverClient aiResolver;
+    private SharedPreferences preferences;
+    private boolean destroyed;
+    private int generation, detailRequest, page=1;
+    private LinearLayout continueSlot,detailControls,navigationBar,recommendSlot,favoriteSlot,movieSlot;
+    private boolean navigationExpanded=true;
+    private Runnable collapseDetailNavigation;
+    private final java.util.concurrent.ExecutorService localIo=java.util.concurrent.Executors.newSingleThreadExecutor();
+    private static final int VOICE=730,EXPORT=731,IMPORT=732;
+    private boolean returnedFromPlayer;
+    private String screen="home", section="movie", searchTerm="";
+    private FarsiPlexTitle selected;
+    private FarsiPlexTitle parentSeries;
+    private final List<FarsiPlexTitle> loadedMovies=new ArrayList<>(), loadedSeries=new ArrayList<>();
+    private final Set<String> seen=new HashSet<>();
+    private LinearLayout listingContainer;
+    private TextView nextPage;
+    private boolean fetching, hasMore=true;
+    private final List<FarsiPlexTitle> searchRaw=new ArrayList<>();
+    private LinearLayout searchResultsView;
+    private String filterKind="", filterGenre="";
+    private int filterYear, filterRating;
+    private long surpriseCounter;
+    private boolean offlineUiTest;
 
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private final ExecutorService diagnosticsPool = Executors.newFixedThreadPool(3);
-    private final List<String> observedMedia = new ArrayList<>();
-    private LibraryStore library;
-    private PosterLoader posterLoader;
-    private SourceUpdater sourceUpdater;
-    private FrameLayout root, browserLayer, homeLayer;
-    private WebView web;
-    private RemoteCursorView cursor;
-    private TextView hint;
-    private View fullscreenVideo;
-    private WebChromeClient.CustomViewCallback fullscreenCallback;
-    private boolean showHome = true, pointerMode = true;
-    private boolean cursorInitialized;
-    private float cursorX, cursorY;
-    private String homeUrl;
-    private String activeSiteId = "parsimondo";
-    private String detectedPageUrl;
-    private final Runnable hideHint = () -> { if (hint != null) hint.setVisibility(View.GONE); };
-
-    @SuppressLint("SetJavaScriptEnabled")
-    @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
+    @Override public void onCreate(Bundle savedInstanceState){
+        super.onCreate(savedInstanceState);
+        offlineUiTest=BuildConfig.DEBUG && getIntent().getBooleanExtra(EXTRA_OFFLINE_UI_TEST,false);
+        getWindow().getDecorView().setSystemUiVisibility(5894|View.SYSTEM_UI_FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        immersive();
-        library = new LibraryStore(this);
-        posterLoader = new PosterLoader();
-        sourceUpdater = new SourceUpdater(this);
-        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        // Migrate an existing personal Namakade start URL without exposing it in source.
-        String legacy = prefs.getString(START_URL, "");
-        if (SiteCatalog.matches(SiteCatalog.byId("namakade"), legacy)) {
-            if (!prefs.contains(CUSTOM_NAMAKADE)) {
-                prefs.edit().putString(CUSTOM_NAMAKADE, legacy).remove(START_URL).apply();
-            } else {
-                prefs.edit().remove(START_URL).apply();
+        root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
+        SourceRules.initialize(this);
+        source=new UnifiedRepository(this);images=new CatalogImages(this);
+        streams=new LocalStreams(this);aiResolver=new AiResolverClient(this);
+        preferences=ProfileStore.data(this,"pooyan_farsiplex_v04");
+        home();
+        if(!offlineUiTest)root.postDelayed(()->UpdaterActivity.maybeNotify(this),5000);
+        if(new ProfileStore(this).picker())root.post(()->chooseProfile(false));
+    }
+    private int dp(float v){return TvUi.dp(this,v);}
+    private LinearLayout vertical(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
+    private LinearLayout horizontal(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);l.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);return l;}
+    private LinearLayout.LayoutParams lp(int w,int h){return new LinearLayout.LayoutParams(w<0?w:dp(w),h<0?h:dp(h));}
+    private GradientDrawable shape(int color,int radius,boolean focus){
+        GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));
+        d.setStroke(dp(focus?3:0),focus?TvUi.ringColorFor(color):color);return d;
+    }
+    private TextView text(String s,int size,int color,boolean bold){
+        TextView v=TvUi.text(this,s,size,color,bold);v.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG);
+        v.setMaxLines(5);return v;
+    }
+    private TextView button(String title,boolean selected,Runnable onClick){
+        TextView v=text(title,15,WHITE,true);
+        v.setGravity(Gravity.CENTER);v.setPadding(dp(18),dp(8),dp(18),dp(8));
+        int normal=selected?TEAL:PANEL;
+        v.setFocusable(true);v.setClickable(true);v.setBackground(shape(normal,TvUi.RADIUS_PILL,false));
+        v.setOnFocusChangeListener((view,focused)->{
+            v.setBackground(shape(focused?WHITE:normal,TvUi.RADIUS_PILL,focused));
+            v.setTextColor(focused?BG:WHITE);
+            float sc=TvUi.focusScale(this,focused?1.06f:1f);v.animate().scaleX(sc).scaleY(sc).setDuration(TvUi.reducedMotion(this)?0:120).start();
+            v.setElevation(focused?dp(10):0);
+            if(view.getTag() instanceof String&&((String)view.getTag()).startsWith("nav:"))navigationFocusChanged(focused);
+        });
+        v.setTag(title);v.setOnClickListener(view->onClick.run());
+        v.setOnKeyListener((view,key,event)->{
+            if(TvUi.activate(view,key,event))return true;
+            if(event.getAction()==KeyEvent.ACTION_DOWN&&key==KeyEvent.KEYCODE_DPAD_UP&&"home-primary".equals(view.getTag())){
+                return focusNavigation("خانه");
             }
-        }
-        activeSiteId = SiteCatalog.byId(prefs.getString(ACTIVE_SITE, "parsimondo")).id;
-        homeUrl = siteStartUrl(SiteCatalog.byId(activeSiteId));
-        pointerMode = prefs.getBoolean(POINTER_MODE, true);
-        root = new FrameLayout(this);
-        root.setBackgroundColor(TvUi.BG);
-        setContentView(root);
+            return false;
+        });
+        return v;
+    }
+    private void gap(LinearLayout l,int width){l.addView(new View(this),lp(width,1));}
+    private void begin(String destination){
+        heroHandler.removeCallbacks(rotateHero);
+        screen=destination;generation++;root.removeAllViews();
+        LinearLayout outer=horizontal();outer.setTag("ultimate-shell");root.addView(outer,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout page=vertical();page.setTag("page-content");
+        ScrollView scroll=new ScrollView(this);scroll.setVerticalScrollBarEnabled(false);
+        content=vertical();content.setPadding(dp(30),dp(10),dp(28),dp(35));
+        scroll.addView(content,new ScrollView.LayoutParams(-1,-2));
+        page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        status=text("",12,MUTED,false);status.setPadding(dp(42),0,0,dp(4));
+        status.setVisibility(View.GONE);page.addView(status,lp(-1,24));
+        outer.addView(page,new LinearLayout.LayoutParams(0,-1,1));
 
-        browserLayer = new FrameLayout(this);
-        root.addView(browserLayer, fill());
-        web = new WebView(this);
-        web.setBackgroundColor(Color.BLACK);
-        web.setFocusable(true);
-        web.setFocusableInTouchMode(true);
-        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        WebSettings settings = web.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setSupportMultipleWindows(false);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setAllowFileAccessFromFileURLs(false);
-        settings.setAllowUniversalAccessFromFileURLs(false);
-        settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setBuiltInZoomControls(true);
-        settings.setDisplayZoomControls(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
-        WebView.setWebContentsDebuggingEnabled(false);
-
-        web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                SiteCatalog.Site current = SiteCatalog.fromUrl(url);
-                if (current != null && !activeSiteId.equals(current.id)) activeSiteId = current.id;
-                if (detectedPageUrl == null || !detectedPageUrl.equals(url)) {
-                    detectedPageUrl = url;
-                    observedMedia.clear();
-                }
-            }
-            @Override public void onPageFinished(WebView view, String url) {
-                // Only curate metadata from known source top-level pages, never search queries.
-                if (SiteCatalog.fromUrl(url) != null) {
-                    library.visit(titleOrUrl(view.getTitle(), url), url);
-                    collectArtwork(url);
-                }
-                if (!showHome) showHint("جهت‌ها: نشانگر | OK: انتخاب | Menu: امکانات", 4000);
-            }
-            @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
-                // Observe eligible URLs only. Do not read, modify, cache or replay responses.
-                String url = req.getUrl().toString();
-                if (StreamDetector.isDirectMedia(url)) {
-                    handler.post(() -> rememberObserved(url));
-                }
-                return super.shouldInterceptRequest(view, req);
-            }
-            @Override public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError e) {
-                if (req.isForMainFrame()) showHint("سایت در دسترس نیست؛ شبکه، DNS یا محدودیت منطقه‌ای را بررسی کن. از منو می‌توانی سایت دیگری انتخاب کنی.", 10000);
-            }
-            @Override public void onReceivedSslError(WebView v, SslErrorHandler h, SslError error) {
-                h.cancel();
-                showHint("خطای گواهی SSL سایت؛ اتصال ناامن تأیید نمی‌شود.", 10000);
-            }
-            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri u = request.getUrl();
-                String scheme = u.getScheme();
-                if (!"https".equalsIgnoreCase(scheme)) {
-                    showHint("فقط لینک‌های HTTPS مجازند.", 4500);
-                    return true;
-                }
+        LinearLayout navigation=vertical();navigationBar=navigation;navigation.setTag("side-navigation");
+        navigation.setGravity(Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+        navigation.setPadding(dp(10),dp(16),dp(10),dp(12));
+        navigation.setBackgroundColor(0xFF111621);
+        navigation.setFocusable(false);
+        TextView brand=text("POOYAN TV",18,WHITE,true);brand.setTag("navigation-brand");navigation.addView(brand,lp(-1,42));
+        TextView subtitle=text("سینمای خانگی",10,MUTED,false);subtitle.setTag("navigation-subtitle");navigation.addView(subtitle,lp(-1,25));
+        View divider=new View(this);divider.setBackgroundColor(0xFF283142);
+        divider.setTag("navigation-divider");
+        LinearLayout.LayoutParams dividerLp=lp(-1,1);dividerLp.topMargin=dp(10);dividerLp.bottomMargin=dp(12);navigation.addView(divider,dividerLp);
+        String active=destination.equals("movies")||destination.equals("detail")&&selected!=null&&"movie".equals(selected.kind)?"فیلم‌ها":
+                destination.equals("series")||destination.equals("detail")&&selected!=null&&"series".equals(selected.kind)?"سریال‌ها":
+                destination.equals("favorites")?"فهرست من":destination.equals("search")?"جست‌وجو":destination.equals("profiles")?"پروفایل‌ها":"خانه";
+        addNavigationItem(navigation,"⌂","خانه",active.equals("خانه"),this::home);
+        addNavigationItem(navigation,"▣","فیلم‌ها",active.equals("فیلم‌ها"),()->browse("movie"));
+        addNavigationItem(navigation,"▤","سریال‌ها",active.equals("سریال‌ها"),()->browse("series"));
+        addNavigationItem(navigation,"♡","فهرست من",active.equals("فهرست من"),this::favorites);
+        addNavigationItem(navigation,"⌕","جست‌وجو",active.equals("جست‌وجو"),this::askSearch);
+        addNavigationItem(navigation,"◉","پروفایل‌ها",active.equals("پروفایل‌ها"),()->chooseProfile(false));
+        View spacer=new View(this);navigation.addView(spacer,new LinearLayout.LayoutParams(1,0,1));
+        addNavigationItem(navigation,"⚙","تنظیمات",false,this::settings);
+        outer.addView(navigation,lp(176,-1));
+        setNavigationExpanded(!"detail".equals(destination));
+        for(int i=0;i<navigation.getChildCount();i++){
+            View child=navigation.getChildAt(i);if(!child.isFocusable())continue;
+            child.setOnKeyListener((v,key,event)->{
+                if(TvUi.activate(v,key,event))return true;
+                if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;
+                if(key==KeyEvent.KEYCODE_DPAD_LEFT){View target=firstContentFocus();if(target!=null&&target.requestFocus()){if("detail".equals(screen))setNavigationExpanded(false);return true;}}
                 return false;
+            });
+            if(!"detail".equals(destination)&&child.getTag()!=null&&child.getTag().equals("nav:"+active))child.requestFocus();
+        }
+    }
+    private void addNavigationItem(LinearLayout navigation,String icon,String label,boolean active,Runnable action){
+        TextView item=button(icon+"   "+label,active,action);item.setTag("nav:"+label);
+        item.setHint(icon);
+        item.setTextSize(13);item.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);
+        item.setPadding(dp(12),0,dp(12),0);item.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        item.setContentDescription(label);LinearLayout.LayoutParams params=lp(-1,45);params.bottomMargin=dp(5);navigation.addView(item,params);
+    }
+    private void navigationFocusChanged(boolean focused){
+        if(!"detail".equals(screen)||navigationBar==null)return;
+        if(focused){if(collapseDetailNavigation!=null)navigationBar.removeCallbacks(collapseDetailNavigation);setNavigationExpanded(true);return;}
+        LinearLayout rail=navigationBar;
+        if(collapseDetailNavigation!=null)rail.removeCallbacks(collapseDetailNavigation);
+        collapseDetailNavigation=()->{if("detail".equals(screen)&&navigationBar==rail&&!isInside(getCurrentFocus(),rail))setNavigationExpanded(false);};
+        rail.postDelayed(collapseDetailNavigation,120);
+    }
+    private void setNavigationExpanded(boolean expanded){
+        if(navigationBar==null)return;
+        if(!expanded&&collapseDetailNavigation!=null)navigationBar.removeCallbacks(collapseDetailNavigation);
+        navigationExpanded=expanded;
+        for(int i=0;i<navigationBar.getChildCount();i++){
+            View child=navigationBar.getChildAt(i);Object tag=child.getTag();
+            if("navigation-brand".equals(tag)||"navigation-subtitle".equals(tag)||"navigation-divider".equals(tag)){
+                child.setVisibility(expanded?View.VISIBLE:View.GONE);continue;
+            }
+            if(!(child instanceof TextView)||!(tag instanceof String)||!((String)tag).startsWith("nav:"))continue;
+            TextView item=(TextView)child;String label=String.valueOf(item.getContentDescription());
+            String icon=String.valueOf(item.getHint());
+            item.setText(expanded?icon+"   "+label:icon);
+            item.setGravity(expanded?Gravity.CENTER_VERTICAL|Gravity.RIGHT:Gravity.CENTER);
+            int horizontal=dp(expanded?12:4);item.setPadding(horizontal,0,horizontal,0);
+        }
+        ViewGroup.LayoutParams params=navigationBar.getLayoutParams();
+        int width=dp(expanded?176:68);
+        if(params!=null&&params.width!=width){params.width=width;navigationBar.setLayoutParams(params);}
+        navigationBar.setContentDescription(expanded?"منوی اصلی باز":"منوی اصلی جمع‌شده");
+        navigationBar.requestLayout();
+    }
+    private View firstContentFocus(){
+        if(content==null)return null;
+        return findFirstFocusable(content);
+    }
+    private View findFirstFocusable(ViewGroup parent){
+        for(int i=0;i<parent.getChildCount();i++){
+            View child=parent.getChildAt(i);if(child.getVisibility()!=View.VISIBLE)continue;
+            if(child.isFocusable())return child;
+            if(child instanceof ViewGroup){View nested=findFirstFocusable((ViewGroup)child);if(nested!=null)return nested;}
+        }
+        return null;
+    }
+    private boolean focusNavigation(String label){
+        if(navigationBar==null)return false;
+        for(int i=0;i<navigationBar.getChildCount();i++){
+            View child=navigationBar.getChildAt(i);
+            if(child.getTag()!=null&&child.getTag().equals("nav:"+label))return child.requestFocus();
+        }
+        return false;
+    }
+    private void info(String value){
+        if(status==null)return;
+        String safe=value==null?"":value.replaceAll("(?i)FarsiPlex|Namakade|F2Media", "منبع")
+           .replaceAll("https?://[^\\s]+", "");
+        status.setText(safe);
+        status.setVisibility(safe.trim().isEmpty()?View.GONE:View.VISIBLE);
+    }
+    private void title(String heading,String sub){
+        LinearLayout section=vertical();
+        TextView h=text(heading,23,WHITE,true);h.setLetterSpacing(.008f);
+        section.addView(h,lp(-1,37));
+        if(sub!=null&&!sub.isEmpty())section.addView(text(sub,13,MUTED,false),lp(-1,25));
+        LinearLayout.LayoutParams p=lp(-1,-2);p.topMargin=dp(21);p.bottomMargin=dp(7);
+        content.addView(section,p);
+    }
+    private void home(){
+        parentSeries=null;begin("home");heroSlides.clear();heroIndex=0;featured=null;
+        FrameLayout hero=new FrameLayout(this);heroFrame=hero;
+        hero.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFF15151B,0xFF242027,0xFF08080B}));
+        featuredBackdrop=new ImageView(this);
+        featuredBackdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);featuredBackdrop.setAlpha(.62f);
+        hero.addView(featuredBackdrop,new FrameLayout.LayoutParams(-1,-1));
+        View shade=new View(this);
+        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFF07070A,0xE607070A,0x8C07070A,0x0807070A}));
+        hero.addView(shade,new FrameLayout.LayoutParams(-1,-1));
+        View fade=new View(this);
+        fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x0007070A,0x0007070A,0xFF07070A}));
+        hero.addView(fade,new FrameLayout.LayoutParams(-1,-1));
+        hero.setClipToOutline(true);
+        hero.setOutlineProvider(new android.view.ViewOutlineProvider(){
+            @Override public void getOutline(View view,android.graphics.Outline outline){
+                outline.setRoundRect(0,0,view.getWidth(),view.getHeight(),dp(20));
             }
         });
-        web.setWebChromeClient(new WebChromeClient() {
-            @Override public void onShowCustomView(View view, CustomViewCallback cb) {
-                if (fullscreenVideo != null) { cb.onCustomViewHidden(); return; }
-                fullscreenVideo = view;
-                fullscreenCallback = cb;
-                root.addView(view, fill());
-                cursor.setVisibility(View.GONE);
-                hint.setVisibility(View.GONE);
-                immersive();
-            }
-            @Override public void onHideCustomView() { exitWebFullscreen(); }
-            @Override public void onPermissionRequest(PermissionRequest req) {
-                // Video viewing doesn't require granting camera/microphone to arbitrary sites.
-                req.deny();
-            }
+        LinearLayout story=vertical();story.setGravity(Gravity.CENTER_VERTICAL);
+        story.setPadding(dp(35),dp(15),dp(22),dp(20));
+        FrameLayout.LayoutParams storyParams=new FrameLayout.LayoutParams(-1,-1,Gravity.START);
+        hero.addView(story,storyParams);
+        TextView eyebrow=text("POOYAN TV",12,0xFFFF8087,true);
+        eyebrow.setLetterSpacing(.06f);story.addView(eyebrow,lp(-1,32));
+        featuredTitle=text("در حال دریافت کاتالوگ",37,WHITE,true);
+        featuredTitle.setMaxLines(2);featuredTitle.setMinHeight(dp(60));story.addView(featuredTitle,lp(-1,-2));
+        featuredDescription=text("عنوان و اطلاعات فقط از داده‌های موجود در کاتالوگ نمایش داده می‌شوند.",16,0xFFD7D7DD,false);
+        featuredDescription.setMaxLines(3);featuredDescription.setEllipsize(TextUtils.TruncateAt.END);story.addView(featuredDescription,lp(-1,-2));
+        LinearLayout actions=horizontal();heroActions=actions;actions.setTag("hero-actions");
+        actions.addView(button("فیلم‌ها",true,()->{
+            if(featured!=null)detail(featured);else browse("movie");
+        }),lp(161,50));gap(actions,11);
+        actions.addView(button("سریال‌ها",false,()->{
+            if(featured!=null)detail(featured);else browse("series");
+        }),lp(177,50));
+        actions.getChildAt(0).setTag("home-primary");
+        actions.getChildAt(2).setTag("home-more");
+        for(int i=0;i<actions.getChildCount();i++)actions.getChildAt(i).setOnKeyListener((v,k,e)->{
+            if(TvUi.activate(v,k,e))return true;
+            if(e.getAction()!=KeyEvent.ACTION_DOWN)return false;
+            if(k==KeyEvent.KEYCODE_DPAD_UP&&v==actions.getChildAt(0))return focusNavigation("خانه");
+            // Preserve left/right focus between Play and Details. At the edges, change slides.
+            if(k==KeyEvent.KEYCODE_DPAD_LEFT && v==actions.getChildAt(0)){advanceHero(-1);return true;}
+            if(k==KeyEvent.KEYCODE_DPAD_RIGHT && v==actions.getChildAt(2)){advanceHero(1);return true;}
+            return false;
         });
-        browserLayer.addView(web, fill());
-        cursor = new RemoteCursorView(this);
-        browserLayer.addView(cursor, fill());
-        cursor.setVisibility(pointerMode ? View.VISIBLE : View.GONE);
-        hint = TvUi.text(this, "", 14, TvUi.TEXT, true);
-        hint.setGravity(Gravity.CENTER);
-        hint.setBackground(TvUi.bg(0xE91D2B3C, 12, this));
-        hint.setPadding(dp(18), dp(12), dp(18), dp(12));
-        hint.setVisibility(View.GONE);
-        FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        hp.bottomMargin = dp(24);
-        browserLayer.addView(hint, hp);
-        root.post(() -> {
-            cursorX = root.getWidth() / 2f;
-            cursorY = root.getHeight() / 2f;
-            cursorInitialized = true;
-            cursor.moveTo(cursorX, cursorY);
+        story.addView(actions,lp(-1,53));
+        heroIndicator=text("",12,0xFFFFCFD1,false);
+        heroIndicator.setContentDescription("پیشنهادهای صفحهٔ خانه");
+        LinearLayout.LayoutParams indicatorParams=lp(-1,32);indicatorParams.topMargin=dp(6);
+        story.addView(heroIndicator,indicatorParams);
+        content.addView(hero,lp(-1,heroHeightDp()));
+        refreshFeaturedCarousel();
+        continueSlot=vertical();content.addView(continueSlot,lp(-1,-2));
+        addContinueWatching();
+        continueSlot.setVisibility(preferences.getBoolean("home_continue",true)?View.VISIBLE:View.GONE);
+        content.addView(button("سورپرایزم کن از کاتالوگ",false,this::surpriseMe),lp(285,48));
+        title("فیلم‌ها","");rail("movie");
+        movieSlot=vertical();content.addView(movieSlot,lp(-1,-2));
+        favoriteSlot=vertical();content.addView(favoriteSlot,lp(-1,-2));
+        recommendSlot=vertical();content.addView(recommendSlot,lp(-1,-2));
+        refreshHomeExtras();
+        title("سریال‌ها برای تماشای پشت‌سرهم","");rail("series");
+        content.addView(button("همهٔ فیلم‌ها",false,()->browse("movie")),lp(210,50));
+        content.addView(button("تاریخچهٔ تماشا",false,this::historyScreen),lp(230,50));
+    }
+    /** Hero height in dp: scales with the screen but never below the v0.7.5 height, so rails stay reachable at 720p/1080p. */
+    private int heroHeightDp(){
+        android.util.DisplayMetrics m=getResources().getDisplayMetrics();
+        float heightDp=m.heightPixels/m.density;
+        return Math.max(340,Math.min(380,(int)(heightDp*0.47f)));
+    }
+    private void surpriseMe(){
+        List<FarsiPlexTitle> catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
+        if(catalog.isEmpty()){info("ابتدا باید پیشنهادهای فیلم و سریال دریافت شوند.");return;}
+        LibraryStore library=new LibraryStore(this);
+        FarsiPlexTitle choice=DiscoveryPolicy.surprise(catalog,
+            Recommendations.rank(catalog,favoriteItems(),library.watched()),library.watched(),
+            System.currentTimeMillis()/30000L+(++surpriseCounter));
+        if(choice!=null)detail(choice);
+    }
+    private void refreshFeaturedCarousel(){
+        if(!"home".equals(screen)||heroIndicator==null)return;
+        String old=featured==null?"":featured.url;
+        List<FarsiPlexTitle> slides=HomeHeroPolicy.select(loadedMovies,loadedSeries);
+        heroSlides.clear();heroSlides.addAll(slides);
+        heroIndex=0;
+        for(int i=0;i<heroSlides.size();i++)if(heroSlides.get(i).url.equals(old)){heroIndex=i;break;}
+        if(heroSlides.isEmpty()){
+            featured=null;heroIndicator.setText(HomeHeroPolicy.label(0,0));
+            featuredTitle.setText("عنوانی برای نمایش موجود نیست");
+            featuredDescription.setText("با دریافت داده از کاتالوگ، عنوان‌های واقعی اینجا نمایش داده می‌شوند.");
+            featuredBackdrop.setImageDrawable(null);
+            View movies=root.findViewWithTag("home-primary"),series=root.findViewWithTag("home-more");
+            if(movies instanceof TextView)((TextView)movies).setText("فیلم‌ها");
+            if(series instanceof TextView)((TextView)series).setText("سریال‌ها");
+        }else updateFeatured(heroSlides.get(heroIndex));
+        scheduleHeroRotation();
+    }
+    private boolean heroActionsFocused(){
+        View focus=getCurrentFocus();
+        return heroActions!=null && focus!=null && focus.getParent()==heroActions;
+    }
+    private void scheduleHeroRotation(){
+        heroHandler.removeCallbacks(rotateHero);
+        if(!destroyed && "home".equals(screen) && heroSlides.size()>1 && !TvUi.reducedMotion(this))
+            heroHandler.postDelayed(rotateHero,HomeHeroPolicy.ROTATION_MS);
+    }
+    private void advanceHero(int delta){
+        if(heroSlides.size()<2)return;
+        heroIndex=HomeHeroPolicy.indexAfter(heroIndex,delta,heroSlides.size());
+        updateFeatured(heroSlides.get(heroIndex));
+        scheduleHeroRotation();
+    }
+    private void updateFeatured(FarsiPlexTitle item){
+        if(item==null||featuredTitle==null)return;
+        boolean changed=featured==null||!item.url.equals(featured.url);
+        featured=item;
+        featuredTitle.setText(item.name);
+        featuredDescription.setText(item.description);
+        TextView primary=root.findViewWithTag("home-primary"),more=root.findViewWithTag("home-more");
+        if(primary!=null)primary.setText("جزئیات");
+        if(more!=null)more.setText("اطلاعات");
+        if(heroIndicator!=null)heroIndicator.setText(HomeHeroPolicy.label(heroIndex,heroSlides.size()));
+        if(changed && heroFrame!=null){
+            // Replace the ImageView rather than keeping unbounded pre-draw listeners.
+            if(featuredBackdrop!=null)heroFrame.removeView(featuredBackdrop);
+            ImageView next=new ImageView(this);
+            next.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            next.setAlpha(0f);
+            heroFrame.addView(next,0,new FrameLayout.LayoutParams(-1,-1));
+            featuredBackdrop=next;
+            if(!item.poster.isEmpty())images.load(next,item.poster);
+            next.animate().alpha(.62f).setDuration(TvUi.reducedMotion(this)?0:420).start();
+        }
+    }
+    private void addContinueWatching(){
+        if(continueSlot==null)return;
+        continueSlot.removeAllViews();
+        List<LibraryStore.Entry> entries=new LibraryStore(this).resumeList();
+        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);row.setTag("poster-row");
+        HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);slider.addView(row);
+        int count=0;
+        for(LibraryStore.Entry entry:entries){
+            if(entry.positionMs<=0||(!StreamDetector.isDirectMedia(entry.url)&&!DataTransfer.page(entry.pageUrl)))continue;
+            LinearLayout tile=vertical();tile.setTag("resume:"+PlaybackResumePolicy.identity(entry.url,entry.pageUrl));
+            tile.setPadding(dp(12),dp(10),dp(12),dp(10));tile.setBackground(shape(PANEL,TvUi.RADIUS_CARD,false));
+            tile.setFocusable(true);tile.setClickable(true);TvUi.remoteClick(tile);
+            TextView name=text(entry.title,16,WHITE,true);name.setMaxLines(2);tile.addView(name,lp(-1,56));
+            android.widget.ProgressBar progress=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(1000);progress.setProgress(entry.durationMs>0?(int)Math.min(1000,1000d*entry.positionMs/entry.durationMs):0);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(TEAL));tile.addView(progress,lp(-1,8));
+            tile.addView(text("▶  ادامه از "+PlaybackResumePolicy.time(entry.positionMs),12,0xFFE5BBC0,false),lp(-1,30));
+            tile.setOnFocusChangeListener((v,focus)->tile.setBackground(shape(focus?0xFF3A1A21:PANEL,TvUi.RADIUS_CARD,focus)));
+            tile.setOnClickListener(v->{
+                String raw=entry.pageUrl;String kind=FarsiPlexUrlPolicy.mediaType(raw);
+                if(!NamakadeCatalog.safeUrl(raw).isEmpty())kind=raw.contains("/episodes/")?"episode":raw.contains("/series")?"series":"movie";
+                if(!kind.isEmpty())detail(new FarsiPlexTitle(raw,kind,entry.title));
+                else play(entry.title,entry.url,entry.pageUrl);
+            });
+            tile.setOnKeyListener((v,k,e)->posterKey(v,k,e));
+            LinearLayout.LayoutParams params=lp(260,114);params.rightMargin=dp(14);row.addView(tile,params);
+            if(++count==12)break;
+        }
+        if(count==0){continueSlot.addView(text("ادامهٔ تماشا",23,WHITE,true),lp(-1,50));continueSlot.addView(text("پس از تماشای یک عنوان، پیشرفت آن اینجا نمایش داده می‌شود.",14,MUTED,false),lp(-1,45));}
+        if(count>0){
+            TextView heading=text("ادامهٔ تماشا",23,WHITE,true);heading.setPadding(0,dp(18),0,dp(8));
+            continueSlot.addView(heading,lp(-1,60));continueSlot.addView(slider,lp(-1,130));
+        }
+    }
+    private void rail(String kind){
+        HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
+        LinearLayout row=horizontal();row.setGravity(Gravity.TOP);row.setTag("poster-row");slider.addView(row);
+        slider.setFocusable(false);
+        for(int i=0;i<5;i++){LinearLayout skeleton=vertical();skeleton.setBackground(shape(PANEL,TvUi.RADIUS_CARD,false));skeleton.setContentDescription("در حال دریافت پوستر");LinearLayout.LayoutParams ph=lp(186,290);ph.rightMargin=dp(13);row.addView(skeleton,ph);}
+        content.addView(slider,lp(-1,320));
+        int token=generation;
+        List<FarsiPlexTitle> cache="movie".equals(kind)?loadedMovies:loadedSeries;
+        if(!cache.isEmpty()){
+            row.removeAllViews();for(int i=0;i<Math.min(cache.size(),18);i++)card(row,cache.get(i));return;
+        }
+        if(offlineUiTest)return;
+        source.list(kind,1,(list,error)->{
+            if(destroyed || token!=generation || !"home".equals(screen))return;
+            row.removeAllViews();
+            if(!list.isEmpty()){
+                cache.clear();cache.addAll(list);
+                for(int i=0;i<Math.min(list.size(),18);i++)card(row,list.get(i));
+                if("home".equals(screen))refreshFeaturedCarousel();
+            }else{
+                row.addView(text("فهرست دریافت نشد. اینترنت، DNS یا محدودیت دسترسی سایت را بررسی کن.",15,MUTED,false),lp(750,85));
+            }
+            if("home".equals(screen)){refreshHomeExtras();if(error!=null)info(error);}
         });
-        homeLayer = new FrameLayout(this);
-        root.addView(homeLayer, fill());
-        // Do not load any site until the user selects it, reducing needless connections.
-        openHome();
-        sourceUpdater.check(false, result -> runOnUiThread(() -> {
-            if (!isFinishing() && showHome) buildHome();
-        }));
     }
-
-    private FrameLayout.LayoutParams fill() { return new FrameLayout.LayoutParams(-1, -1); }
-    private int dp(float p) { return TvUi.dp(this, p); }
-    private void immersive() {
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN |
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    private void browse(String kind){
+        parentSeries=null;section=kind;page=1;fetching=false;hasMore=true;seen.clear();
+        begin("movie".equals(kind)?"movies":"series");
+        title("movie".equals(kind)?"فیلم‌ها":"سریال‌ها","بهترین انتخابت را پیدا کن");
+        listingContainer=vertical();content.addView(listingContainer,lp(-1,-2));
+        nextPage=button("نمایش عنوان‌های بیشتر",true,this::fetchNextPage);
+        LinearLayout.LayoutParams np=lp(272,53);np.topMargin=dp(16);content.addView(nextPage,np);
+        fetchNextPage();
     }
-    private String titleOrUrl(String title, String url) {
-        if (url == null || url.isEmpty()) return "Pooyan TV";
-        if (title != null && !title.trim().isEmpty() && !title.startsWith("http")) return title.trim();
-        String p = Uri.parse(url).getLastPathSegment();
-        return p != null && !p.isEmpty() ? p : "Pooyan TV";
+    private int columns(){
+        float width=getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density;
+        return Math.max(3,(int)((width-100)/200));
     }
-    private void showHint(String message, long milliseconds) {
-        if (fullscreenVideo != null || hint == null) return;
-        hint.setText(message); hint.setVisibility(View.VISIBLE);
-        handler.removeCallbacks(hideHint);
-        handler.postDelayed(hideHint, milliseconds);
-    }
-    private void rememberObserved(String url) {
-        if (!StreamDetector.isDirectMedia(url)) return;
-        observedMedia.remove(url);
-        observedMedia.add(0, url);
-        if (observedMedia.size() > 12) observedMedia.remove(observedMedia.size() - 1);
-    }
-
-    private String siteStartUrl(SiteCatalog.Site site) {
-        String key = "namakade".equals(site.id) ? CUSTOM_NAMAKADE : "site_custom_" + site.id;
-        String saved = getSharedPreferences(PREFS, MODE_PRIVATE).getString(key, "");
-        if (SiteCatalog.matches(site, saved)) return saved;
-        String updated = sourceUpdater.overrideFor(site);
-        return !updated.isEmpty() ? updated : site.url;
-    }
-    private void openSite(SiteCatalog.Site site) {
-        activeSiteId = site.id;
-        homeUrl = siteStartUrl(site);
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_SITE, activeSiteId).apply();
-        // Clear candidates from the previous page/source before switching.
-        observedMedia.clear();
-        detectedPageUrl = null;
-        web.loadUrl(homeUrl);
-        openWeb();
-    }
-    private void openSavedPage(String url) {
-        if (!StreamDetector.isHttpsUrl(url)) { toast("لینک معتبر نیست."); return; }
-        SiteCatalog.Site site = SiteCatalog.fromUrl(url);
-        if (site != null) {
-            activeSiteId = site.id;
-            homeUrl = siteStartUrl(site);
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_SITE, activeSiteId).apply();
-        }
-        observedMedia.clear();
-        detectedPageUrl = null;
-        web.loadUrl(url);
-        openWeb();
-    }
-    private void showSitePicker() {
-        List<SiteCatalog.Site> sites = SiteCatalog.all();
-        String[] choices = new String[sites.size()];
-        for (int i = 0; i < sites.size(); i++) {
-            SiteCatalog.Site site = sites.get(i);
-            choices[i] = site.title + " · " + site.status;
-        }
-        new AlertDialog.Builder(this).setTitle("انتخاب سایت در Pooyan TV")
-                .setItems(choices, (d, n) -> openSite(sites.get(n)))
-                .setNegativeButton("انصراف", null).show();
-    }
-
-    private void openHome() {
-        if (fullscreenVideo != null) exitWebFullscreen();
-        if (web != null && !showHome) {
-            // Prevent a hidden WebView from continuing an HTML5 video behind Home.
-            web.evaluateJavascript("(function(){document.querySelectorAll('video').forEach(function(v){v.pause();})})()", null);
-            web.onPause();
-        }
-        showHome = true;
-        browserLayer.setVisibility(View.GONE);
-        homeLayer.setVisibility(View.VISIBLE);
-        buildHome();
-    }
-    private void openWeb() {
-        showHome = false;
-        if (web != null) web.onResume();
-        homeLayer.setVisibility(View.GONE);
-        browserLayer.setVisibility(View.VISIBLE);
-        if (web.getUrl() == null || "about:blank".equals(web.getUrl())) web.loadUrl(homeUrl);
-        web.requestFocus();
-        showHint("Menu: تغییر سایت، پخش‌کننده، علاقه‌مندی و تنظیمات", 5500);
-    }
-
-    private void buildHome() {
-        homeLayer.removeAllViews();
-        GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF102139, TvUi.BG, 0xFF070A12});
-        homeLayer.setBackground(gradient);
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setClipToPadding(false);
-        homeLayer.addView(scroll, fill());
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(46), dp(26), dp(46), dp(38));
-        scroll.addView(body);
-
-        TextView brand = TvUi.text(this, "POOYAN  /  TV", 26, TvUi.TEXT, true);
-        body.addView(brand);
-        topSpace(body, TvUi.text(this, "سینمای فارسی در یک جا · مخصوص Android TV", 14, TvUi.MUTED, false), 4);
-
-        LinearLayout hero = new LinearLayout(this);
-        hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setPadding(dp(28), dp(22), dp(28), dp(25));
-        GradientDrawable banner = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{0xFF1B4870, 0xFF14223C});
-        banner.setCornerRadius(dp(20));
-        hero.setBackground(banner);
-        LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(-1, -2);
-        heroLp.topMargin = dp(22);
-        body.addView(hero, heroLp);
-        hero.addView(TvUi.text(this, "Pooyan TV  v0.1  |  سینمای فارسی", 30, TvUi.TEXT, true));
-        topSpace(hero, TvUi.text(this,
-                "۷ منبع، جست‌وجوی عناوین و پوسترهای صفحات بازدیدشده؛ بدون حساب در خود اپ.",
-                16, 0xFFD2DEEF, false), 5);
-        LinearLayout actionRow = new LinearLayout(this);
-        actionRow.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams actionLp = new LinearLayout.LayoutParams(-1, -2);
-        actionLp.topMargin = dp(18);
-        hero.addView(actionRow, actionLp);
-        addAction(actionRow, "▶  باز کردن: " + SiteCatalog.byId(activeSiteId).title,
-                true, () -> openSite(SiteCatalog.byId(activeSiteId)));
-        addAction(actionRow, "⌕  جست‌وجوی فیلم", false, this::showSearch);
-        addAction(actionRow, "▦  منابع", false, this::showSitePicker);
-        addAction(actionRow, "+  لینک مستقیم", false, this::promptStreamUrl);
-
-        siteSection(body, "بدون ثبت‌نام اعلام‌شده", "این سایت‌ها صریحاً عدم نیاز به ثبت‌نام را اعلام کرده‌اند.",
-                SiteCatalog.VERIFIED);
-        siteSection(body, "سایت‌های عمومی", "ممکن است بعضی محتواها یا قابلیت‌ها ورود بخواهند.",
-                SiteCatalog.PUBLIC);
-        siteSection(body, "آزمایشی و سایت شخصی", "دسترسی این منابع هنوز کامل آزمایش نشده است.",
-                SiteCatalog.REVIEW);
-        siteSection(body, null, null, SiteCatalog.PERSONAL);
-
-        List<LibraryStore.Entry> watched = library.resumeList();
-        if (!watched.isEmpty()) section(body, "ادامه تماشا با پلیر اختصاصی", watched, 8, true);
-        List<LibraryStore.Entry> faves = library.bookmarks();
-        if (!faves.isEmpty()) posterSection(body, "علاقه‌مندی‌ها", faves, 12);
-        List<LibraryStore.Entry> suggestions = suggestions();
-        if (!suggestions.isEmpty()) posterSection(body, "پیشنهاد محلی بر اساس سابقهٔ تو", suggestions, 12);
-        List<LibraryStore.Entry> recent = library.recentPages();
-        if (!recent.isEmpty()) posterSection(body, "صفحات دیده‌شده و پوسترهایشان", recent, 15);
-
-        LinearLayout secondary = new LinearLayout(this);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.topMargin = dp(26);
-        body.addView(secondary, lp);
-        addAction(secondary, "⌕  جست‌وجو", false, this::showSearch);
-        addAction(secondary, "☆  ذخیره صفحه", false, this::bookmarkCurrent);
-        addAction(secondary, "◎  بررسی اتصال سایت‌ها", false, this::showSourceDiagnostics);
-        addAction(secondary, "⚙  تنظیمات", false, this::showSettings);
-        addAction(secondary, "ⓘ  راهنما", false, this::showHelp);
-        topSpace(body, TvUi.text(this,
-                "پوسترها و پیشنهادها فقط از صفحاتی می‌آیند که بازدید کرده‌ای. جست‌وجوی سراسری از Bing استفاده می‌کند؛ بعضی سرویس‌ها به ورود یا پروکسی نیاز دارند.",
-                13, TvUi.MUTED, false), 25);
-        hero.post(() -> { if (actionRow.getChildCount() > 0) actionRow.getChildAt(0).requestFocus(); });
-    }
-
-    /** Extract just page-level OpenGraph artwork. No JS bridge, scraping service or token sharing. */
-    private void collectArtwork(String pageUrl) {
-        if (web == null || SiteCatalog.fromUrl(pageUrl) == null) return;
-        String js = "(function(){var x=document.querySelector('meta[property=\"og:image\"],meta[name=\"twitter:image\"]');" +
-                "var u=x&&(x.content||x.getAttribute('content'));if(!u)return '';" +
-                "try{return new URL(u,location.href).href;}catch(e){return '';}})()";
-        web.evaluateJavascript(js, result -> {
-            if (web == null || !pageUrl.equals(web.getUrl())) return;
-            try {
-                String poster = new JSONArray("[" + result + "]").optString(0, "");
-                if (PosterPolicy.accept(pageUrl, poster)) {
-                    library.visit(titleOrUrl(web.getTitle(), pageUrl), pageUrl, poster);
+    private void fetchNextPage(){
+        if(fetching||!hasMore||page>10)return;
+        fetching=true;final int p=page;final int token=generation;
+        nextPage.setText("در حال بارگذاری…");
+        source.list(section,p,(list,error)->{
+            if(destroyed||generation!=token)return;
+            fetching=false;
+            if(error!=null){
+                if(p>1 && error.contains("HTTP 404")){
+                    hasMore=false;nextPage.setText("پایان فهرست");return;
                 }
-            } catch (Exception ignored) { }
+                nextPage.setText("خطای شبکه؛ دوباره تلاش کن");info(error);return;
+            }
+            int added=0;int perRow=columns();LinearLayout row=null,firstRow=null;
+            for(FarsiPlexTitle item:list){
+                if(!seen.add(item.url))continue;
+                if(added%perRow==0){
+                    row=horizontal();row.setGravity(Gravity.TOP);
+                    LinearLayout.LayoutParams rp=lp(-1,316);rp.bottomMargin=dp(13);
+                    listingContainer.addView(row,rp);
+                    if(firstRow==null)firstRow=row;
+                }
+                card(row,item);added++;
+            }
+            page=p+1;hasMore=!list.isEmpty()&&page<=10;
+            nextPage.setText(hasMore?"نمایش عنوان‌های بیشتر":"پایان فهرست");
+            // Newly loaded posters are immediately navigable using the remote.
+            if(firstRow!=null&&firstRow.getChildCount()>0){
+                final View first=firstRow.getChildAt(0);
+                if(p==1 || nextPage.isFocused())first.post(first::requestFocus);
+            }
+            info(seen.size()+" عنوان برای تماشا پیدا شد");
         });
     }
-
-    private List<LibraryStore.Entry> suggestions() {
-        List<LibraryStore.Entry> recent = library.recentPages();
-        List<LibraryStore.Entry> saved = library.bookmarks();
-        List<LibraryStore.Entry> ranked = new ArrayList<>();
-        if (recent.isEmpty()) return ranked;
-        // On-device, deterministic similarity to saved titles / last visited provider.
-        SiteCatalog.Site favoriteProvider = SiteCatalog.fromUrl(recent.get(0).url);
-        for (LibraryStore.Entry e : recent) {
-            if (ranked.size() >= 12) break;
-            if (e.url.equals(recent.get(0).url)) continue;
-            boolean related = favoriteProvider != null && SiteCatalog.matches(favoriteProvider, e.url);
-            for (LibraryStore.Entry f : saved) {
-                if (e.url.equals(f.url)) related = true;
-                String[] words = SearchEngine.normalize(f.title).split(" ");
-                for (String w : words) if (w.length() > 3 && SearchEngine.normalize(e.title).contains(w)) related = true;
-            }
-            if (related) ranked.add(e);
-        }
-        return ranked;
-    }
-
-    private void posterSection(LinearLayout body, String title, List<LibraryStore.Entry> entries, int limit) {
-        topSpace(body, TvUi.text(this, title, 21, TvUi.TEXT, true), 24);
-        HorizontalScrollView scroller = new HorizontalScrollView(this);
-        scroller.setHorizontalScrollBarEnabled(false);
-        LinearLayout cards = new LinearLayout(this);
-        cards.setOrientation(LinearLayout.HORIZONTAL);
-        cards.setPadding(dp(6), dp(5), dp(6), dp(12));
-        scroller.addView(cards);
-        topSpace(body, scroller, 8);
-        for (int i=0; i<Math.min(limit, entries.size()); i++) {
-            LibraryStore.Entry entry = entries.get(i);
-            LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(dp(8), dp(8), dp(8), dp(10));
-            card.setBackground(TvUi.bg(0xFF202E43, 12, this));
-            card.setFocusable(true); card.setClickable(true);
-            card.setContentDescription(entry.title + ", باز کردن صفحه");
-            card.setOnClickListener(v -> openSavedPage(entry.url));
-            card.setOnFocusChangeListener((v, focused) -> {
-                card.setBackground(TvUi.bg(focused ? TvUi.BLUE : 0xFF202E43, 12, this));
-                card.setScaleX(focused ? 1.04f : 1f); card.setScaleY(focused ? 1.04f : 1f);
-            });
-            FrameLayout artwork = new FrameLayout(this);
-            artwork.setBackground(TvUi.bg(0xFF283C58, 10, this));
-            TextView fallback = TvUi.text(this, "▶", 36, 0xFF8BA9D1, true);
-            fallback.setGravity(Gravity.CENTER);
-            artwork.addView(fallback, fill());
-            ImageView image = new ImageView(this);
-            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            artwork.addView(image, fill());
-            posterLoader.show(this, image, entry.url, entry.posterUrl);
-            card.addView(artwork, new LinearLayout.LayoutParams(-1, dp(126)));
-            TextView label = TvUi.text(this, entry.title, 16, TvUi.TEXT, true);
-            label.setMaxLines(2); label.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            topSpace(card, label, 9);
-            SiteCatalog.Site site = SiteCatalog.fromUrl(entry.url);
-            topSpace(card, TvUi.text(this, site == null ? "صفحه ذخیره‌شده" : site.title,
-                    12, TvUi.MUTED, false), 5);
-            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(210), dp(213));
-            cp.rightMargin = dp(12);
-            cards.addView(card, cp);
-        }
-    }
-
-    private void showSearch() {
-        EditText edit = new EditText(this);
-        edit.setSingleLine(true); edit.setTextSize(19);
-        edit.setHint("نام فیلم یا سریال به فارسی یا انگلیسی");
-        edit.setPadding(dp(17), dp(14), dp(17), dp(14));
-        new AlertDialog.Builder(this).setTitle("جست‌وجو در Pooyan TV")
-                .setMessage("در تاریخچهٔ خودت جست‌وجو کن؛ برای کل منابع از جست‌وجوی وب استفاده می‌شود.")
-                .setView(edit).setNegativeButton("انصراف", null)
-                .setPositiveButton("جست‌وجو", (d,w) -> {
-                    String query = edit.getText().toString().trim();
-                    if (query.isEmpty()) { toast("عنوان را وارد کن."); return; }
-                    showSearchResults(query);
-                }).show();
-    }
-
-    private void showSearchResults(String query) {
-        Map<String, LibraryStore.Entry> unique = new LinkedHashMap<>();
-        for (LibraryStore.Entry e : library.bookmarks()) unique.put(e.url, e);
-        for (LibraryStore.Entry e : library.recentPages()) unique.putIfAbsent(e.url, e);
-        List<LibraryStore.Entry> matches = new ArrayList<>();
-        for (LibraryStore.Entry e : unique.values()) if (SearchEngine.matches(query, e.title)) matches.add(e);
-        int shown = Math.min(12, matches.size());
-        String[] labels = new String[shown + 2];
-        for (int i = 0; i < shown; i++) {
-            SiteCatalog.Site s = SiteCatalog.fromUrl(matches.get(i).url);
-            labels[i] = "▶ " + matches.get(i).title + (s == null ? "" : " · " + s.title);
-        }
-        labels[shown] = "🌐 جست‌وجوی وب در همهٔ منابع (Bing)";
-        labels[shown + 1] = "▦ انتخاب یک سایت برای جست‌وجو";
-        new AlertDialog.Builder(this)
-                .setTitle("نتایج محلی: " + matches.size() + " · " + query)
-                .setItems(labels, (d, n) -> {
-                    if (n < shown) openSavedPage(matches.get(n).url);
-                    else if (n == shown) openWebSearch(query, null);
-                    else showSearchSourcePicker(query);
-                }).setNeutralButton("تغییر جست‌وجو", (d,w) -> showSearch())
-                .setNegativeButton("بستن", null).show();
-    }
-
-    private void showSearchSourcePicker(String query) {
-        List<SiteCatalog.Site> choices = new ArrayList<>();
-        for (SiteCatalog.Site site : SiteCatalog.all()) {
-            if (!SiteCatalog.PERSONAL.equals(site.group)) choices.add(site);
-        }
-        String[] names = new String[choices.size()];
-        for (int i=0;i<choices.size();i++) names[i] = choices.get(i).title;
-        new AlertDialog.Builder(this).setTitle("جست‌وجوی «" + query + "» در سایت")
-                .setItems(names, (d,n) -> openWebSearch(query, choices.get(n)))
-                .setNegativeButton("انصراف", null).show();
-    }
-    private void openWebSearch(String query, SiteCatalog.Site site) {
-        String url = SearchEngine.webSearchUrl(query, site);
-        if (url.isEmpty()) { toast("عنوان جست‌وجو خالی است."); return; }
-        // Avoid loading the previous site before launching the user's chosen search.
-        showHome = false;
-        homeLayer.setVisibility(View.GONE);
-        browserLayer.setVisibility(View.VISIBLE);
-        web.onResume(); // Home pauses WebView, so a search launched from Home must resume it.
-        web.loadUrl(url);
-        web.requestFocus();
-        showHint("جست‌وجو از Bing است؛ نمایهٔ وب ممکن است کامل یا به‌روز نباشد.", 8500);
-    }
-
-    private void siteSection(LinearLayout body, String title, String description, String group) {
-        List<SiteCatalog.Site> sites = SiteCatalog.group(group);
-        if (sites.isEmpty()) return;
-        if (title != null) {
-            topSpace(body, TvUi.text(this, title, 21, TvUi.TEXT, true), 27);
-            if (description != null) topSpace(body, TvUi.text(this, description, 13, TvUi.MUTED, false), 3);
-        }
-        HorizontalScrollView scroller = new HorizontalScrollView(this);
-        scroller.setHorizontalScrollBarEnabled(false);
-        LinearLayout cards = new LinearLayout(this);
-        cards.setPadding(dp(6), dp(6), dp(6), dp(8));
-        cards.setOrientation(LinearLayout.HORIZONTAL);
-        scroller.addView(cards);
-        topSpace(body, scroller, title == null ? 5 : 9);
-        for (SiteCatalog.Site site : sites) {
-            LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(dp(19), dp(17), dp(18), dp(14));
-            int base = site.accent;
-            GradientDrawable panel = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                    new int[]{base, 0xFF1B2A43});
-            panel.setCornerRadius(dp(16));
-            card.setBackground(panel);
-            card.setFocusable(true);
-            card.setClickable(true);
-            card.setContentDescription(site.title + "، " + site.detail);
-            card.setOnFocusChangeListener((v, focus) -> {
-                if (focus) {
-                    card.setBackground(TvUi.bg(TvUi.BLUE, 16, this));
-                    card.setScaleX(1.04f); card.setScaleY(1.04f);
-                } else {
-                    card.setBackground(panel);
-                    card.setScaleX(1f); card.setScaleY(1f);
-                }
-            });
-            card.setOnClickListener(v -> openSite(site));
-            TextView name = TvUi.text(this, site.title, 22, TvUi.TEXT, true);
-            card.addView(name);
-            topSpace(card, TvUi.text(this, site.subtitle, 14, 0xFFECF2FC, false), 6);
-            TextView status = TvUi.text(this, "●  " + site.status + "   ·   ورود با OK", 12, 0xFFE0EBFA, true);
-            topSpace(card, status, 20);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(296), dp(142));
-            p.rightMargin = dp(14);
-            cards.addView(card, p);
-        }
-    }
-
-    private void addAction(LinearLayout target, String label, boolean primary, Runnable run) {
-        TextView b = TvUi.focusButton(this, label, primary, run);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
-        p.rightMargin = dp(12);
-        target.addView(b, p);
-    }
-    private void topSpace(LinearLayout target, View v, int margin) {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
-        p.topMargin = dp(margin);
-        target.addView(v, p);
-    }
-    private void section(LinearLayout body, String title, List<LibraryStore.Entry> entries, int max, boolean video) {
-        TextView label = TvUi.text(this, title, 21, TvUi.TEXT, true);
-        topSpace(body, label, 28);
-        HorizontalScrollView scroller = new HorizontalScrollView(this);
-        scroller.setHorizontalScrollBarEnabled(false);
-        LinearLayout cards = new LinearLayout(this);
-        cards.setPadding(dp(6), dp(6), dp(6), dp(8));
-        cards.setOrientation(LinearLayout.HORIZONTAL);
-        scroller.addView(cards);
-        topSpace(body, scroller, 8);
-        for (int i=0; i<Math.min(max, entries.size()); i++) {
-            LibraryStore.Entry e = entries.get(i);
-            LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(dp(16), dp(14), dp(16), dp(14));
-            card.setBackground(TvUi.bg(0xFF1F2C43, 14, this));
-            card.setFocusable(true);
-            card.setClickable(true);
-            card.setOnFocusChangeListener((v, focused) -> {
-                card.setBackground(TvUi.bg(focused ? TvUi.BLUE : 0xFF1F2C43, 14, this));
-                card.setScaleX(focused ? 1.03f : 1f);
-                card.setScaleY(focused ? 1.03f : 1f);
-            });
-            card.setOnClickListener(v -> {
-                if (video) launchPlayer(e.url, e.title, e.pageUrl);
-                else openSavedPage(e.url);
-            });
-            TextView name = TvUi.text(this, e.title, 17, TvUi.TEXT, true);
-            name.setMaxLines(2);
-            card.addView(name);
-            String sub = video && e.durationMs > 0
-                    ? (e.positionMs / 60000) + " / " + (e.durationMs / 60000) + " دقیقه"
-                    : (video ? "پخش اختصاصی" : "باز کردن در مرورگر");
-            topSpace(card, TvUi.text(this, sub, 13, 0xFFCBD7E8, false), 10);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(245), dp(108));
-            p.rightMargin = dp(12);
-            cards.addView(card, p);
-        }
-    }
-
-    private void bookmarkCurrent() {
-        String url = web.getUrl();
-        if (!StreamDetector.isHttpsUrl(url)) { toast("صفحه‌ای برای ذخیره وجود ندارد."); return; }
-        if (library.hasBookmark(url)) { toast("این صفحه قبلاً ذخیره شده است."); return; }
-        library.addBookmark(titleOrUrl(web.getTitle(), url), url);
-        toast("به علاقه‌مندی‌ها اضافه شد.");
-        if (showHome) buildHome();
-    }
-
-    private void probeMediaAndChoose() {
-        if (web == null) return;
-        // DOM access is intentionally restricted to visible same-frame elements.
-        // Cross-origin iframes, blob URLs and DRM sessions cannot be extracted here.
-        String probe = "(function(){var list=[];var els=document.querySelectorAll('video,source,a[href]');"
-                + "for(var i=0;i<els.length&&i<300;i++){var e=els[i],src=e.currentSrc||e.src||e.href||e.getAttribute('src');"
-                + "if(!src)continue;try{src=new URL(src,location.href).href;}catch(z){continue;}"
-                + "if(/^https:\\/\\//i.test(src)&&/\\.(m3u8|mpd|mp4|m4v|webm)(?:[?#]|$)/i.test(src)&&list.indexOf(src)<0)list.push(src);"
-                + "if(list.length>=12)break;}return list;})()";
-        web.evaluateJavascript(probe, response -> {
-            List<String> options = new ArrayList<>();
-            try {
-                JSONArray array = new JSONArray(response);
-                for (int i=0;i<array.length();i++) {
-                    String candidate = array.optString(i);
-                    if (StreamDetector.isDirectMedia(candidate) && !options.contains(candidate)) options.add(candidate);
-                }
-            } catch (Exception ignored) {}
-            for (String captured : observedMedia) {
-                if (StreamDetector.isDirectMedia(captured) && !options.contains(captured)) options.add(captured);
-            }
-            if (options.isEmpty()) {
-                new AlertDialog.Builder(this)
-                        .setTitle("لینک مستقیم پیدا نشد")
-                        .setMessage("این صفحه هنوز لینک MP4 / HLS / DASH قابل شناسایی ارائه نکرده است. " +
-                                "ویدئو را در سایت پخش کن و دوباره Menu > پخش‌کننده اختصاصی را بزن. " +
-                                "در صورت استفاده از DRM، iframe محدود یا blob، حالت سایت لازم است.")
-                        .setPositiveButton("ادامه در سایت", null)
-                        .setNeutralButton("ورود لینک مستقیم", (d,w) -> promptStreamUrl())
-                        .show();
-                return;
-            }
-            String[] labels = new String[options.size()];
-            for (int i=0;i<options.size();i++) {
-                Uri u = Uri.parse(options.get(i));
-                labels[i] = StreamDetector.safeName(options.get(i)) + " · " + u.getHost();
-            }
-            new AlertDialog.Builder(this).setTitle("پخش با Media3 · " + options.size() + " لینک")
-                    .setItems(labels, (d, index) -> launchPlayer(options.get(index),
-                            titleOrUrl(web.getTitle(), web.getUrl()), web.getUrl()))
-                    .setNegativeButton("انصراف", null).show();
+    private void card(LinearLayout row,FarsiPlexTitle item){
+        row.setTag("poster-row");
+        LinearLayout cell=vertical();cell.setPadding(dp(6),dp(6),dp(6),dp(6));
+        cell.setTag(item.url);cell.setBackground(shape(0xFF16161C,TvUi.RADIUS_CARD,false));cell.setFocusable(true);cell.setClickable(true);
+        ImageView poster=new ImageView(this);poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        poster.setBackgroundColor(android.graphics.Color.TRANSPARENT);poster.setContentDescription(item.name);
+        FrameLayout art=new FrameLayout(this);art.setBackground(shape(0xFF2A292F,10,false));
+        TextView fallback=text("پوستر در دسترس نیست",13,MUTED,false);fallback.setGravity(Gravity.CENTER);fallback.setPadding(dp(10),dp(10),dp(10),dp(10));art.addView(fallback,new FrameLayout.LayoutParams(-1,-1));art.addView(poster,new FrameLayout.LayoutParams(-1,-1));cell.addView(art,lp(160,217));
+        if(!item.poster.isEmpty())images.load(poster,item.poster);
+        TextView name=text(item.name,14,WHITE,true);name.setSingleLine(true);name.setEllipsize(TextUtils.TruncateAt.END);
+        cell.addView(name,lp(-1,27));
+        boolean playable=streams.get("farsiplex:"+item.url)!=null;
+        String badge=("movie".equals(item.kind)?"فیلم":"episode".equals(item.kind)?"قسمت":"سریال")+(item.year.isEmpty()?"":" · "+item.year);
+        cell.addView(text(playable?"لینک شخصی ذخیره شده · "+badge:badge,11,MUTED,false),lp(-1,24));
+        cell.setOnFocusChangeListener((v,focused)->{
+            cell.setBackground(shape(focused?0xFF2B2B35:0xFF16161C,TvUi.RADIUS_CARD,focused));
+            float sc=TvUi.focusScale(this,focused?1.055f:1f);cell.animate().scaleX(sc).scaleY(sc).setDuration(TvUi.reducedMotion(this)?0:110).start();
+            cell.setElevation(focused?dp(14):0);
+            // Elevation highlights focus without reordering the poster row.
         });
+        cell.setOnClickListener(v->detail(item));
+        // Do not depend on Android's geometry-based focus search through nested
+        // ScrollViews: it often jumps from a poster to the top navigation bar.
+        cell.setOnKeyListener((v,k,e)->posterKey(v,k,e));
+        LinearLayout.LayoutParams p=lp(186,302);p.rightMargin=dp(13);row.addView(cell,p);
     }
-
-    private void launchPlayer(String url, String title, String pageUrl) {
-        if (!StreamDetector.isHttpsUrl(url)) { toast("فقط پخش HTTPS مجاز است."); return; }
-        Intent intent = new Intent(this, PlayerActivity.class);
-        intent.putExtra(PlayerActivity.EXTRA_URL, url);
-        intent.putExtra(PlayerActivity.EXTRA_TITLE, title);
-        if (StreamDetector.isHttpsUrl(pageUrl)) intent.putExtra(PlayerActivity.EXTRA_PAGE_URL, pageUrl);
-        if (web != null) intent.putExtra(PlayerActivity.EXTRA_USER_AGENT, web.getSettings().getUserAgentString());
-        if (web != null) {
-            // Pause an HTML5 video before switching to Media3, preventing double audio.
-            web.evaluateJavascript("(function(){document.querySelectorAll('video').forEach(function(v){v.pause();})})()", null);
+    private boolean posterKey(View v,int key,KeyEvent event){
+        if(TvUi.activate(v,key,event))return true;
+        if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;
+        if(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT){
+            ViewGroup row=(ViewGroup)v.getParent();
+            int next=TvPosterFocusPolicy.neighbor(row.indexOfChild(v),row.getChildCount(),key==KeyEvent.KEYCODE_DPAD_RIGHT);
+            if(next>=0)focusPoster(row.getChildAt(next));return true;
         }
-        startActivity(intent);
+        if(key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_DPAD_DOWN)return movePosterVertical(v,key==KeyEvent.KEYCODE_DPAD_DOWN);
+        return false;
     }
-
-    private void promptStreamUrl() {
-        EditText edit = new EditText(this);
-        edit.setSingleLine(true);
-        edit.setTextSize(17);
-        edit.setHint("https://example.com/video.m3u8");
-        edit.setPadding(dp(18), dp(16), dp(18), dp(16));
-        new AlertDialog.Builder(this).setTitle("لینک مستقیم MP4 / HLS / DASH")
-                .setView(edit).setNegativeButton("انصراف", null)
-                .setPositiveButton("پخش", (d,w) -> {
-                    String value = edit.getText().toString().trim();
-                    if (!StreamDetector.isDirectMedia(value)) {
-                        toast("لینک مستقیم HTTPS با پسوند mp4 / m3u8 / mpd وارد کن.");
-                    } else launchPlayer(value, StreamDetector.safeName(value), web != null ? web.getUrl() : "");
-                }).show();
-    }
-
-    private void showSettings() {
-        String[] items = {"انتخاب سایت", "باز کردن سایت فعلی", "بازگشت به صفحه شروع سایت",
-                "تنظیم لینک شخصی Namakade", "تغییر آدرس شروع سایت فعلی",
-                pointerMode ? "خاموش کردن نشانگر" : "روشن کردن نشانگر",
-                "بارگذاری مجدد", "پاک کردن تاریخچه و علاقه‌مندی‌ها",
-                "پاک کردن کوکی و داده‌های همه سایت‌ها", "جست‌وجوی فیلم",
-                "تنظیم منبع به‌روزرسانی (JSON)", "بررسی به‌روزرسانی منابع",
-                "بررسی اتصال سایت‌ها", "راهنما"};
-        new AlertDialog.Builder(this).setTitle("تنظیمات Pooyan TV")
-                .setItems(items, (d,n) -> {
-                    switch (n) {
-                        case 0: showSitePicker(); break;
-                        case 1: openWeb(); break;
-                        case 2: openSite(SiteCatalog.byId(activeSiteId)); break;
-                        case 3: changeSiteUrl(SiteCatalog.byId("namakade")); break;
-                        case 4: changeSiteUrl(SiteCatalog.byId(activeSiteId)); break;
-                        case 5: togglePointer(); break;
-                        case 6: web.reload(); openWeb(); break;
-                        case 7: new AlertDialog.Builder(this)
-                                .setMessage("تاریخچه تماشا و علاقه‌مندی‌ها پاک شوند؟")
-                                .setNegativeButton("انصراف", null)
-                                .setPositiveButton("پاک کردن", (x,y) -> {
-                                    library.clear(); if (showHome) buildHome();
-                                }).show(); break;
-                        case 8: new AlertDialog.Builder(this)
-                                .setMessage("کوکی‌ها و داده‌های همه سایت‌ها پاک شوند؟ این کار ممکن است از حساب سایت‌ها خارجت کند.")
-                                .setNegativeButton("انصراف", null)
-                                .setPositiveButton("پاک کردن", (x,y) -> {
-                                    CookieManager.getInstance().removeAllCookies(null);
-                                    android.webkit.WebStorage.getInstance().deleteAllData();
-                                    web.clearCache(true);
-                                    if (!showHome) web.reload();
-                                    toast("کوکی و داده‌های وب پاک شدند.");
-                                }).show(); break;
-                        case 9: showSearch(); break;
-                        case 10: configureSourceUpdates(); break;
-                        case 11: checkSourceUpdates(); break;
-                        case 12: showSourceDiagnostics(); break;
-                        case 13: showHelp(); break;
-                        default: break;
-                    }
-                }).show();
-    }
-    private void showBrowserMenu() {
-        String[] items = {"▦ تغییر سایت", "◉ پخش‌کننده اختصاصی (تشخیص لینک)",
-                "☆ ذخیره صفحه", "⌂ صفحه اصلی", "↻ بارگذاری دوباره",
-                pointerMode ? "خاموش کردن نشانگر" : "روشن کردن نشانگر",
-                "🔗 لینک مستقیم", "⌕ جست‌وجوی عنوان در منابع", "⇄ همین عنوان در سایت‌های دیگر", "⚙ تنظیمات"};
-        new AlertDialog.Builder(this)
-                .setTitle("Pooyan TV · " + SiteCatalog.byId(activeSiteId).title)
-                .setItems(items, (d,i) -> {
-                    switch(i) {
-                        case 0: showSitePicker(); break;
-                        case 1: probeMediaAndChoose(); break;
-                        case 2: bookmarkCurrent(); break;
-                        case 3: openHome(); break;
-                        case 4: web.reload(); break;
-                        case 5: togglePointer(); break;
-                        case 6: promptStreamUrl(); break;
-                        case 7: showSearch(); break;
-                        case 8: showSearchSourcePicker(titleOrUrl(web.getTitle(), web.getUrl())); break;
-                        case 9: showSettings(); break;
-                        default: break;
-                    }
-                }).show();
-    }
-    private void changeSiteUrl(SiteCatalog.Site site) {
-        EditText edit = new EditText(this);
-        edit.setSingleLine(true);
-        edit.setText(siteStartUrl(site));
-        edit.setPadding(dp(18), dp(15), dp(18), dp(15));
-        new AlertDialog.Builder(this).setTitle("آدرس HTTPS برای " + site.title)
-                .setMessage("فقط آدرس دامنهٔ همین سایت را بگذار. برای Namakade می‌توانی لینک شخصی خودت را اینجا ذخیره کنی.")
-                .setView(edit).setNegativeButton("لغو", null)
-                .setNeutralButton("آدرس اصلی", (d,w) -> {
-                    String key = "namakade".equals(site.id) ? CUSTOM_NAMAKADE : "site_custom_" + site.id;
-                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(key).apply();
-                    if (site.id.equals(activeSiteId)) openSite(site);
-                    else toast("آدرس سایت بازنشانی شد.");
-                })
-                .setPositiveButton("ذخیره", (d,w) -> {
-                    String value = edit.getText().toString().trim();
-                    if (!SiteCatalog.matches(site, value)) {
-                        toast("آدرس باید HTTPS و متعلق به دامنهٔ " + site.host + " باشد.");
-                        return;
-                    }
-                    String key = site.id.equals("namakade") ? CUSTOM_NAMAKADE : "site_custom_" + site.id;
-                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(key, value).apply();
-                    if (site.id.equals(activeSiteId)) openSite(site);
-                    else toast("آدرس ذخیره شد.");
-                }).show();
-    }
-    private void togglePointer() {
-        pointerMode = !pointerMode;
-        cursor.setVisibility(pointerMode ? View.VISIBLE : View.GONE);
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(POINTER_MODE, pointerMode).apply();
-        toast(pointerMode ? "نشانگر روشن است" : "کنترل مستقیم WebView روشن است");
-        web.requestFocus();
-    }
-    private void configureSourceUpdates() {
-        EditText edit = new EditText(this);
-        edit.setSingleLine(true);
-        edit.setText(sourceUpdater.getManifestUrl());
-        edit.setHint("https://your-domain.example/sources.json");
-        edit.setPadding(dp(17), dp(16), dp(17), dp(16));
-        new AlertDialog.Builder(this).setTitle("به‌روزرسانی آدرس منابع")
-                .setMessage("اختیاری: آدرس یک فایل JSON مورداعتماد را وارد کن. در هر ۲۴ ساعت یک بار بررسی می‌شود و فقط مسیر سایت‌های شناخته‌شده را تغییر می‌دهد؛ هرگز دامنهٔ جدید یا لینک خصوصی Namakade را نمی‌پذیرد. برای غیرفعال‌سازی، این فیلد را خالی کن.")
-                .setView(edit).setNegativeButton("انصراف", null)
-                .setPositiveButton("ذخیره", (d,w) -> {
-                    if (sourceUpdater.setManifestUrl(edit.getText().toString()))
-                        toast("تنظیمات به‌روزرسانی ذخیره شد.");
-                    else toast("نشانی باید HTTPS معتبر باشد.");
-                }).show();
-    }
-    private void checkSourceUpdates() {
-        toast("در حال بررسی فهرست منابع…");
-        sourceUpdater.check(true, result -> runOnUiThread(() -> {
-            if (!isFinishing()) { toast(result); if (showHome) buildHome(); }
-        }));
-    }
-
-    private void showSourceDiagnostics() {
-        // Tests each public base URL without credentials; this is not a video test.
-        List<SiteCatalog.Site> sources = SiteCatalog.all();
-        final String[] statuses = new String[sources.size()];
-        java.util.Arrays.fill(statuses, "در انتظار…");
-        TextView results = TvUi.text(this, "", 16, TvUi.TEXT, false);
-        results.setPadding(dp(24), dp(15), dp(24), dp(15));
-        results.setText(buildDiagnosticText(sources, statuses));
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(results);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("بررسی اتصال ۷ منبع")
-                .setMessage("فقط پاسخ صفحهٔ اصلی سایت بررسی می‌شود؛ نتیجهٔ موفق به معنای پخش فیلم، نبود ثبت‌نام یا وجود زیرنویس نیست.")
-                .setPositiveButton("بستن", null)
-                .create();
-        // AlertDialog.setView must be called before show().
-        dialog.setView(scroll);
-        dialog.show();
-        for (int i = 0; i < sources.size(); i++) {
-            final int index = i;
-            SiteCatalog.Site site = sources.get(i);
-            diagnosticsPool.execute(() -> {
-                String result = SourceDiagnostics.check(site);
-                runOnUiThread(() -> {
-                    if (isFinishing() || !dialog.isShowing()) return;
-                    statuses[index] = result;
-                    results.setText(buildDiagnosticText(sources, statuses));
-                });
-            });
-        }
-    }
-    private String buildDiagnosticText(List<SiteCatalog.Site> sources, String[] results) {
-        StringBuilder text = new StringBuilder();
-        for (int i = 0; i < sources.size(); i++) {
-            if (i > 0) text.append("\n\n");
-            text.append(sources.get(i).title).append("\n").append(results[i]);
-        }
-        return text.toString();
-    }
-
-    private void showHelp() {
-        new AlertDialog.Builder(this).setTitle("راهنمای Pooyan TV")
-                .setMessage("از صفحهٔ اصلی یکی از سایت‌ها را انتخاب کن؛ همهٔ سایت‌ها در یک اپ هستند. " +
-                        "بدون ثبت‌نام داخل Pooyan TV، اما بعضی سایت‌ها ممکن است ورود بخواهند. " +
-                        "برای انتخاب سایت دیگر Menu > تغییر سایت را بزن.\n\n" +
-                        "در سایت: جهت‌ها برای نشانگر، OK برای کلیک، Menu یا کلید زرد برای امکانات. " +
-                        "در پلیر اختصاصی: چپ/راست برای عقب و جلو، OK برای نمایش کنترل‌ها، Play/Pause برای توقف.\n\n" +
-                        "تشخیص لینک پس از شروع ویدئو در وب‌سایت بهتر عمل می‌کند. " +
-                        "فقط MP4، HLS و DASH مستقیم با HTTPS پشتیبانی می‌شوند. " +
-                        "کیفیت و زیرنویس به منبع بستگی دارند. پخش DRM و iframe محدود از مسیر سایت انجام می‌شود.\n\n" +
-                        "جست‌وجوی وب عبارت موردنظر را به Bing می‌فرستد؛ تا خودت آن را انتخاب نکنی اجرا نمی‌شود. " +
-                "پوسترها فقط از سایت اصلی صفحه و بدون ارسال کوکی خوانده می‌شوند. " +
-                "پیشنهادهای محلی فقط از صفحات دیده‌شده یا ذخیره‌شده ساخته می‌شوند. " +
-                "فهرست اختیاری به‌روزرسانی صرفاً نشانی شروع سایت‌های شناخته‌شده را تغییر می‌دهد. " +
-                "این اپ غیررسمی است و فایل‌های ویدئویی را میزبانی نمی‌کند.")
-                .setPositiveButton("متوجه شدم", null).show();
-    }
-    private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
-
-    @Override public boolean dispatchKeyEvent(KeyEvent event) {
-        int key = event.getKeyCode();
-        if (key == KeyEvent.KEYCODE_MENU || key == KeyEvent.KEYCODE_SETTINGS || key == KeyEvent.KEYCODE_PROG_YELLOW) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                if (fullscreenVideo == null) {
-                    if (showHome) showSettings(); else showBrowserMenu();
-                }
+    /** Explicit TV focus traversal between poster rows, including lazy-loaded pages. */
+    private boolean focusPoster(View target){
+        if(target==null)return false;
+        if(!target.requestFocus())return false;
+        android.view.ViewParent parent=target.getParent();
+        while(parent!=null){
+            if(parent instanceof ScrollView||parent instanceof HorizontalScrollView){
+                target.requestRectangleOnScreen(new android.graphics.Rect(0,0,target.getWidth(),target.getHeight()),false);
+                break;
             }
-            return true;
+            parent=parent.getParent();
         }
-        if (showHome || fullscreenVideo != null || !pointerMode) return super.dispatchKeyEvent(event);
-        boolean arrow = key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT ||
-                key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN;
-        boolean select = key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER ||
-                key == KeyEvent.KEYCODE_NUMPAD_ENTER || key == KeyEvent.KEYCODE_BUTTON_A;
-        if (!arrow && !select) return super.dispatchKeyEvent(event);
-        if (event.getAction() != KeyEvent.ACTION_DOWN) return true;
-        if (arrow) moveCursor(key, event.getRepeatCount());
-        else if (event.getRepeatCount() == 0) tapWeb(cursorX, cursorY);
         return true;
     }
-    private void moveCursor(int dir, int repeats) {
-        if (root.getWidth() <= 0 || root.getHeight() <= 0) return;
-        if (!cursorInitialized) {
-            cursorX = root.getWidth()/2f; cursorY = root.getHeight()/2f; cursorInitialized=true;
+    private void posterRows(View view,List<LinearLayout> rows){
+        if("poster-row".equals(view.getTag())&&view instanceof LinearLayout){
+            if(((LinearLayout)view).getChildCount()>0&&((LinearLayout)view).getChildAt(0).isFocusable())rows.add((LinearLayout)view);return;
         }
-        int step = dp(repeats >= 4 ? 76 : 35);
-        switch (dir) {
-            case KeyEvent.KEYCODE_DPAD_LEFT: cursorX -= step; break;
-            case KeyEvent.KEYCODE_DPAD_RIGHT: cursorX += step; break;
-            case KeyEvent.KEYCODE_DPAD_UP: cursorY -= step; break;
-            case KeyEvent.KEYCODE_DPAD_DOWN: cursorY += step; break;
-            default: break;
+        if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)posterRows(group.getChildAt(i),rows);}
+    }
+    private boolean movePosterVertical(View poster,boolean down){
+        if(!(poster.getParent() instanceof LinearLayout))return false;
+        LinearLayout row=(LinearLayout)poster.getParent();List<LinearLayout> rows=new ArrayList<>();posterRows(content,rows);
+        int index=rows.indexOf(row),column=row.indexOfChild(poster),next=index+(down?1:-1);
+        if(index>=0&&next>=0&&next<rows.size()){
+            LinearLayout target=rows.get(next);return focusPoster(target.getChildAt(TvPosterFocusPolicy.column(column,target.getChildCount())));
         }
-        cursorX = Math.max(dp(10), Math.min(root.getWidth()-dp(10), cursorX));
-        cursorY = Math.max(dp(10), Math.min(root.getHeight()-dp(10), cursorY));
-        cursor.moveTo(cursorX, cursorY);
+        if(down){if(nextPage!=null&&nextPage.isShown())return focusPoster(nextPage);return true;}
+        View hero="home".equals(screen)?root.findViewWithTag("home-primary"):null;
+        return hero!=null?focusPoster(hero):navigationBar!=null&&focusPoster(navigationBar.getChildAt(1));
     }
-    private void tapWeb(float x, float y) {
-        long t = SystemClock.uptimeMillis();
-        MotionEvent down = MotionEvent.obtain(t,t,MotionEvent.ACTION_DOWN,x,y,0);
-        MotionEvent up = MotionEvent.obtain(t,t+65,MotionEvent.ACTION_UP,x,y,0);
-        try { web.dispatchTouchEvent(down); web.dispatchTouchEvent(up); }
-        finally { down.recycle(); up.recycle(); }
+    private boolean insideHomeContent(View view){
+        android.view.ViewParent parent=view.getParent();
+        while(parent!=null){if(parent==content)return true;parent=parent.getParent();}
+        return false;
     }
-    private void exitWebFullscreen() {
-        if (fullscreenVideo == null) return;
-        View v = fullscreenVideo;
-        fullscreenVideo = null;
-        root.removeView(v);
-        if (fullscreenCallback != null) {
-            WebChromeClient.CustomViewCallback cb=fullscreenCallback;
-            fullscreenCallback=null;
-            cb.onCustomViewHidden();
-        }
-        cursor.setVisibility(pointerMode ? View.VISIBLE : View.GONE);
-        immersive();
-        web.requestFocus();
-    }
-    @Override public void onBackPressed() {
-        if (fullscreenVideo != null) { exitWebFullscreen(); return; }
-        if (!showHome) {
-            if (web.canGoBack()) web.goBack(); else openHome();
+    /** Layout-order focus lanes include the hero, resume tiles, every poster row and footer buttons. */
+    private void collectHomeLanes(View view,List<List<View>> lanes){
+        if(view==null||view.getVisibility()!=View.VISIBLE)return;
+        Object tag=view.getTag();
+        if(view==heroActions||"poster-row".equals(tag)){
+            if(view instanceof ViewGroup){
+                List<View> lane=new ArrayList<>();ViewGroup group=(ViewGroup)view;
+                for(int i=0;i<group.getChildCount();i++){
+                    View child=group.getChildAt(i);
+                    if(child.getVisibility()==View.VISIBLE && child.isFocusable())lane.add(child);
+                }
+                if(!lane.isEmpty())lanes.add(lane);
+            }
             return;
         }
-        new AlertDialog.Builder(this).setMessage("خروج از Pooyan TV؟")
-                .setNegativeButton("نه", null).setPositiveButton("خروج", (d,w)->finish()).show();
+        if(view.isFocusable()&&view.isClickable()){
+            lanes.add(Collections.singletonList(view));return;
+        }
+        if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++)collectHomeLanes(group.getChildAt(i),lanes);
+        }
     }
-    @Override protected void onResume() {
-        super.onResume();
-        if (web != null && !showHome) web.onResume();
-        if (showHome && homeLayer != null) buildHome();
-        immersive();
+    private boolean moveHomeFocus(View focus,boolean down){
+        if(content==null||!insideHomeContent(focus))return false;
+        List<List<View>> lanes=new ArrayList<>();collectHomeLanes(content,lanes);
+        for(int i=0;i<lanes.size();i++){
+            int column=lanes.get(i).indexOf(focus);
+            if(column<0)continue;
+            int next=HomeFocusPolicy.nextLane(i,down,lanes.size());
+            if(next>=0){List<View> target=lanes.get(next);
+                return focusPoster(target.get(HomeFocusPolicy.column(column,target.size())));
+            }
+            if(!down&&navigationBar!=null)return focusPoster(navigationBar.getChildAt(1));
+            return true;
+        }
+        return false;
     }
-    @Override protected void onPause() { if (web != null) web.onPause(); super.onPause(); }
-    @Override protected void onDestroy() {
-        handler.removeCallbacksAndMessages(null);
-        diagnosticsPool.shutdownNow();
-        if (posterLoader != null) posterLoader.close();
-        if (sourceUpdater != null) sourceUpdater.close();
-        if (fullscreenVideo != null) exitWebFullscreen();
-        if (web != null) { browserLayer.removeView(web); web.destroy(); web=null; }
-        super.onDestroy();
+    @Override public boolean dispatchKeyEvent(KeyEvent event){
+        if(event.getAction()==KeyEvent.ACTION_DOWN&&"detail".equals(screen)
+                &&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT){
+            View focused=getCurrentFocus();
+            if(focused!=null&&isInside(focused,content)){
+                View next=android.view.FocusFinder.getInstance().findNextFocus(root,focused,View.FOCUS_RIGHT);
+                if(next!=null&&isInside(next,navigationBar))return focusPoster(next);
+                Object tag=focused.getTag();
+                boolean rightEdge="detail-alternative".equals(tag)
+                        ||("detail-back".equals(tag)&&root.findViewWithTag("detail-alternative")==null);
+                if(rightEdge){
+                    String destination=selected!=null&&"movie".equals(selected.kind)?"فیلم‌ها":
+                            selected!=null&&"series".equals(selected.kind)?"سریال‌ها":"خانه";
+                    return focusNavigation(destination);
+                }
+            }
+        }
+        if(event.getAction()==KeyEvent.ACTION_DOWN && "home".equals(screen)){
+            int key=event.getKeyCode();
+            if(key==KeyEvent.KEYCODE_DPAD_DOWN||key==KeyEvent.KEYCODE_DPAD_UP){
+                View focused=getCurrentFocus();
+                if(focused!=null){
+                    if(key==KeyEvent.KEYCODE_DPAD_DOWN&&focused.getParent()==navigationBar){
+                        View hero=root.findViewWithTag("home-primary");
+                        if(hero!=null)return focusPoster(hero);
+                    }
+                    if(moveHomeFocus(focused,key==KeyEvent.KEYCODE_DPAD_DOWN))return true;
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+    private boolean isInside(View view,ViewGroup parent){
+        if(view==null||parent==null)return false;
+        android.view.ViewParent current=view.getParent();
+        while(current!=null){if(current==parent)return true;current=current.getParent();}
+        return false;
+    }
+
+    private String returnEpisodeUrl="",renderedDetailUrl="";
+    private String seasonSeriesUrl="";
+    private int selectedDetailSeason=Integer.MIN_VALUE;
+    private View returnView,returnFocus;
+    private LinearLayout returnContent,returnNavigation;
+    private TextView returnStatus;
+    private String returnScreen;
+    private void detail(FarsiPlexTitle item){
+        int request=++detailRequest;
+        if(!"detail".equals(screen)){
+            returnView=root.getChildAt(0);returnFocus=getCurrentFocus();
+            returnContent=content;returnNavigation=navigationBar;returnStatus=status;returnScreen=screen;
+        }
+        selected=item;showDetail(item,false);
+        int token=generation;
+        source.detail(item,(full,error)->{
+            if(destroyed||!"detail".equals(screen)||selected==null||!selected.url.equals(item.url)||request!=detailRequest)return;
+            selected=full;showDetail(full,true);
+            if(error!=null)info(error);
+            new LibraryStore(this).visit(full.name,full.url,full.poster);
+        });
+    }
+    private void showDetail(FarsiPlexTitle item,boolean complete){
+        boolean sameDetail="detail".equals(screen)&&item.url.equals(renderedDetailUrl);
+        Object focusTag=sameDetail&&getCurrentFocus()!=null?getCurrentFocus().getTag():null;
+        if("series".equals(item.kind)&&!item.url.equals(seasonSeriesUrl)){
+            seasonSeriesUrl=item.url;selectedDetailSeason=Integer.MIN_VALUE;
+        }
+        renderedDetailUrl=item.url;
+        begin("detail");
+
+        FrameLayout heroFrame=new FrameLayout(this);
+        heroFrame.setTag("detail-hero");heroFrame.setBackgroundColor(0xFF10131D);
+        ImageView backdrop=new ImageView(this);backdrop.setTag("detail-backdrop");
+        backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);backdrop.setAlpha(.42f);
+        if(!item.poster.isEmpty())images.load(backdrop,item.poster);
+        heroFrame.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
+        View scrim=new View(this);
+        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{0xFF090B12,0xF2090B12,0xC8090B12,0x66090B12,0x18090B12}));
+        heroFrame.addView(scrim,new FrameLayout.LayoutParams(-1,-1));
+        View bottomFade=new View(this);
+        bottomFade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{0x00090B12,0x22090B12,0xFF090B12}));
+        heroFrame.addView(bottomFade,new FrameLayout.LayoutParams(-1,-1));
+
+        LinearLayout hero=horizontal();hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setPadding(dp(36),dp(18),dp(34),dp(20));
+        heroFrame.addView(hero,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout infoPanel=vertical();infoPanel.setGravity(Gravity.CENTER_VERTICAL);
+        hero.addView(infoPanel,new LinearLayout.LayoutParams(0,-1,1));
+
+        String kind="movie".equals(item.kind)?"فیلم":"series".equals(item.kind)?"سریال":"قسمت سریال";
+        StringBuilder metadata=new StringBuilder(kind);
+        if(!item.genre.isEmpty())metadata.append("  ·  ").append(item.genre);
+        if(!item.year.isEmpty())metadata.append("  ·  ").append(item.year);
+        if(!item.rating.isEmpty())metadata.append("  ·  ★ ").append(item.rating);
+        TextView eyebrow=text(metadata.toString(),14,0xFFFDC977,true);
+        eyebrow.setTag("detail-metadata");eyebrow.setMaxLines(1);eyebrow.setEllipsize(TextUtils.TruncateAt.END);
+        infoPanel.addView(eyebrow,lp(-1,31));
+        TextView heading=text(item.name,36,0xFFF7F8FF,true);
+        heading.setTag("detail-title");heading.setMaxLines(2);heading.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams headingParams=lp(-1,-2);headingParams.bottomMargin=dp(8);infoPanel.addView(heading,headingParams);
+        String supporting=item.description;
+        if(!item.cast.isEmpty())supporting+=(supporting.isEmpty()?"":"\n")+"بازیگران: "+item.cast;
+        if(!item.runtime.isEmpty())supporting+=(supporting.isEmpty()?"":"   ·   ")+"مدت: "+item.runtime;
+        if(supporting.isEmpty()&&!complete)supporting="در حال دریافت اطلاعات عنوان…";
+        TextView summary=text(supporting,15,0xFFD3D7E0,false);
+        summary.setTag("detail-description");summary.setMaxLines(3);summary.setEllipsize(TextUtils.TruncateAt.END);
+        if(supporting.trim().isEmpty())summary.setVisibility(View.GONE);
+        infoPanel.addView(summary,lp(-1,62));
+
+        LibraryStore library=new LibraryStore(this);
+        LibraryStore.Entry resume=null;
+        for(LibraryStore.Entry entry:library.resumeList())if(entry.pageUrl.equals(item.url)){resume=entry;break;}
+        boolean completed=false;
+        for(LibraryStore.Entry entry:library.completed())if(entry.pageUrl.equals(item.url)){completed=true;break;}
+        if(resume!=null){
+            TextView watchState=text("ادامهٔ تماشا  ·  "+PlaybackResumePolicy.time(resume.positionMs),13,0xFFFDC977,true);
+            watchState.setTag("detail-watch-state");LinearLayout.LayoutParams stateParams=lp(-1,28);stateParams.topMargin=dp(3);infoPanel.addView(watchState,stateParams);
+            android.widget.ProgressBar progress=new android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+            progress.setTag("detail-progress");progress.setMax(1000);
+            if(resume.durationMs>0)progress.setProgress((int)Math.min(1000,resume.positionMs*1000/resume.durationMs));
+            progress.setProgressTintList(android.content.res.ColorStateList.valueOf(0xFFE92A42));
+            progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0x66343B4C));
+            infoPanel.addView(progress,lp(230,5));
+        }else if(completed){
+            TextView watched=text("✓  تماشا شده",13,0xFF99D6AD,true);
+            watched.setTag("detail-watch-state");infoPanel.addView(watched,lp(-1,28));
+        }
+
+        LinearLayout controls=vertical();detailControls=controls;controls.setTag("detail-actions");
+        LinearLayout.LayoutParams cp=lp(-1,-2);cp.topMargin=dp(8);infoPanel.addView(controls,cp);
+        String key="farsiplex:"+item.url;
+        String custom=streams.get(key);
+        String url=custom!=null?custom:item.publicStream;
+        String primaryLabel=url!=null&&!url.isEmpty()?(resume!=null?"▶  ادامهٔ تماشا":"▶  پخش"):
+            ("series".equals(item.kind)?"انتخاب قسمت":"+  افزودن لینک مجاز");
+        boolean showAlternative=(url==null||url.isEmpty())&&NamakadeCatalog.safeUrl(item.url).isEmpty();
+        LinearLayout primaryRow=horizontal();primaryRow.setTag("detail-action-primary-row");controls.addView(primaryRow,lp(-1,48));
+        TextView primaryAction=button(primaryLabel,true,()->{
+            if("series".equals(item.kind)){
+                View first=root.findViewWithTag("detail-season-"+selectedDetailSeason);
+                if(first==null&&!item.episodes.isEmpty())first=root.findViewWithTag(item.episodes.get(0).url);
+                if(first!=null)focusPoster(first);else info("فهرست قسمت‌ها در دسترس نیست.");
+            }else addStream(item);
+        });
+        if(url!=null&&!url.isEmpty())primaryAction.setOnClickListener(view->play(item.name,url,item.url));
+        primaryAction.setTag("detail-primary");primaryAction.setTextSize(14);
+        primaryRow.addView(primaryAction,new LinearLayout.LayoutParams(0,dp(46),1f));
+        gap(primaryRow,7);
+        TextView favoriteAction=button(isFavorite(item)?"♥ حذف علاقه‌مندی":"♡ علاقه‌مندی",false,()->{
+            toggleFavorite(item);showDetail(item,complete);
+        });
+        favoriteAction.setTag("detail-favorite");favoriteAction.setTextSize(14);
+        primaryRow.addView(favoriteAction,new LinearLayout.LayoutParams(0,dp(46),1f));
+        if((url==null||url.isEmpty())&&!("series".equals(item.kind))){
+            TextView noMedia=text(complete?(item.playbackError.isEmpty()?"منبع پخش برای این عنوان تأیید نشده است.":item.playbackError):"در حال بررسی امکان پخش…",12,0xFFF2CA8F,false);
+            noMedia.setTag("detail-playback-status");LinearLayout.LayoutParams nm=lp(-1,-2);nm.topMargin=dp(2);infoPanel.addView(noMedia,nm);
+        }
+        LinearLayout secondaryRow=horizontal();secondaryRow.setTag("detail-action-secondary-row");
+        LinearLayout.LayoutParams secondaryParams=lp(-1,46);secondaryParams.topMargin=dp(5);controls.addView(secondaryRow,secondaryParams);
+        TextView backAction=button("بازگشت",false,this::backToList);backAction.setTag("detail-back");backAction.setTextSize(14);
+        secondaryRow.addView(backAction,new LinearLayout.LayoutParams(0,dp(44),showAlternative?0.9f:1f));
+        if(showAlternative){
+            gap(secondaryRow,7);
+            TextView alternativeAction=button("بررسی منبع جایگزین",false,()->resolveWithAI(item));
+            alternativeAction.setTag("detail-alternative");alternativeAction.setTextSize(13);
+            secondaryRow.addView(alternativeAction,new LinearLayout.LayoutParams(0,dp(44),1.5f));
+        }
+
+        ImageView poster=new ImageView(this);poster.setTag("detail-poster");poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        FrameLayout posterFrame=new FrameLayout(this);posterFrame.setBackground(shape(0xFF181C27,13,false));posterFrame.setClipToOutline(true);
+        posterFrame.addView(poster,new FrameLayout.LayoutParams(-1,-1));
+        if(!item.poster.isEmpty())images.load(poster,item.poster);
+        else {TextView noPoster=text("پوستر در دسترس نیست",12,MUTED,false);noPoster.setGravity(Gravity.CENTER);posterFrame.addView(noPoster,new FrameLayout.LayoutParams(-1,-1));}
+        LinearLayout.LayoutParams posterParams=lp(160,230);posterParams.leftMargin=dp(20);hero.addView(posterFrame,posterParams);
+        LinearLayout.LayoutParams heroLayout=lp(-1,"series".equals(item.kind)?422:410);
+        heroLayout.bottomMargin=dp(12);content.addView(heroFrame,heroLayout);
+
+        if("series".equals(item.kind)){
+            int newly=complete?SeriesTracker.observe(this,item.url,item.episodes.size()):0;
+            title("فصل‌ها و قسمت‌ها",complete?(newly>0?newly+" قسمت جدید از آخرین بازدید":"یک فصل را انتخاب کن و با ریموت حرکت کن"):"در حال دریافت قسمت‌ها…");
+            List<LibraryStore.Entry> episodesCompleted=library.completed();
+            List<LibraryStore.Entry> episodesWatched=library.watched();
+            List<LibraryStore.Entry> episodesResume=library.resumeList();
+            if(complete&&item.episodes.isEmpty())content.addView(text("فهرست قسمت‌ها در صفحهٔ عمومی دریافت نشد.",15,MUTED,false),lp(-1,50));
+            List<Integer> seasons=DetailSeasonPolicy.seasons(item.episodes);
+            if(!seasons.isEmpty()){
+                if(selectedDetailSeason==Integer.MIN_VALUE||!seasons.contains(selectedDetailSeason))selectedDetailSeason=seasons.get(0);
+                LinearLayout seasonRow=horizontal();seasonRow.setTag("detail-season-row");
+                for(int seasonIndex=0;seasonIndex<seasons.size();seasonIndex++){final int index=seasonIndex;final int season=seasons.get(seasonIndex);String label=season<=0?"فصل‌بندی‌نشده":"فصل "+season;
+                    TextView chip=button(label,season==selectedDetailSeason,()->{selectedDetailSeason=season;showDetail(item,complete);});
+                    chip.setTag("detail-season-"+season);chip.setContentDescription(label);seasonRow.addView(chip,lp(season<=0?168:112,45));gap(seasonRow,8);
+                    chip.setOnKeyListener((view,keyCode,event)->{
+                        if(TvUi.activate(view,keyCode,event))return true;
+                        if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;
+                        if(keyCode==KeyEvent.KEYCODE_DPAD_LEFT||keyCode==KeyEvent.KEYCODE_DPAD_RIGHT){
+                            int next=index+(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT?1:-1);
+                            if(next>=0&&next<seasons.size())return focusPoster(root.findViewWithTag("detail-season-"+seasons.get(next)));
+                        }
+                        if(keyCode==KeyEvent.KEYCODE_DPAD_DOWN){
+                            View rail=root.findViewWithTag("detail-episode-rail");
+                            if(rail instanceof ViewGroup&&((ViewGroup)rail).getChildCount()>0)return focusPoster(((ViewGroup)rail).getChildAt(0));
+                        }
+                        return false;
+                    });
+                }
+                HorizontalScrollView seasonScroller=new HorizontalScrollView(this);seasonScroller.setHorizontalScrollBarEnabled(false);
+                seasonScroller.setTag("detail-season-scroller");seasonScroller.addView(seasonRow);content.addView(seasonScroller,lp(-1,54));
+            }
+            HorizontalScrollView episodeScroller=new HorizontalScrollView(this);
+            episodeScroller.setTag("detail-episode-scroller");episodeScroller.setHorizontalScrollBarEnabled(false);episodeScroller.setClipToPadding(false);
+            LinearLayout episodeRail=horizontal();episodeRail.setTag("detail-episode-rail");episodeScroller.addView(episodeRail);
+            int visibleEpisodes=0;View restoreEpisodeFocus=null;
+            for(FarsiPlexTitle ep:item.episodes){
+                if(ep.season!=selectedDetailSeason)continue;visibleEpisodes++;
+                String stream=streams.get("farsiplex:"+ep.url);
+                LinearLayout episodeCard=vertical();episodeCard.setTag(ep.url);episodeCard.setFocusable(true);episodeCard.setClickable(true);
+                episodeCard.setPadding(dp(7),dp(7),dp(7),dp(7));episodeCard.setBackground(shape(0xFF181C27,12,false));
+                ImageView cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.setBackground(shape(0xFF28364D,7,false));
+                episodeCard.addView(cover,lp(218,107));if(!ep.poster.isEmpty())images.load(cover,ep.poster);
+                TextView epName=text(ep.name,14,WHITE,true);epName.setMaxLines(1);epName.setEllipsize(TextUtils.TruncateAt.END);episodeCard.addView(epName,lp(218,28));
+                String state=SeriesTracker.state(ep.url,episodesCompleted,episodesWatched,episodesResume);
+                episodeCard.addView(text(!state.isEmpty()?state:stream==null?"مشاهدهٔ جزئیات":"▶  آمادهٔ پخش",11,MUTED,false),lp(218,20));
+                episodeCard.setOnClickListener(v->{returnEpisodeUrl=ep.url;parentSeries=item;detail(ep);});TvUi.remoteClick(episodeCard);
+                episodeCard.setOnFocusChangeListener((v,focused)->{
+                    episodeCard.setBackground(shape(focused?0xFF28364D:0xFF181C27,12,focused));
+                    float scale=TvUi.focusScale(this,focused?1.035f:1f);episodeCard.setScaleX(scale);episodeCard.setScaleY(scale);
+                });
+                LinearLayout.LayoutParams epLp=lp(236,170);epLp.rightMargin=dp(11);episodeRail.addView(episodeCard,epLp);
+                final int episodeIndex=visibleEpisodes-1;
+                episodeCard.setOnKeyListener((view,keyCode,event)->{
+                    if(TvUi.activate(view,keyCode,event))return true;
+                    if(event.getAction()!=KeyEvent.ACTION_DOWN)return false;
+                    if(keyCode==KeyEvent.KEYCODE_DPAD_LEFT||keyCode==KeyEvent.KEYCODE_DPAD_RIGHT){
+                        int next=episodeIndex+(keyCode==KeyEvent.KEYCODE_DPAD_RIGHT?1:-1);
+                        if(next>=0&&next<episodeRail.getChildCount())return focusPoster(episodeRail.getChildAt(next));
+                    }
+                    if(keyCode==KeyEvent.KEYCODE_DPAD_UP){
+                        View season=root.findViewWithTag("detail-season-"+selectedDetailSeason);
+                        if(season!=null)return focusPoster(season);
+                    }
+                    return false;
+                });
+                if(ep.url.equals(returnEpisodeUrl))restoreEpisodeFocus=episodeCard;
+            }
+            if(visibleEpisodes>0){
+                content.addView(episodeScroller,lp(-1,178));
+                if(restoreEpisodeFocus!=null){View target=restoreEpisodeFocus;target.post(()->focusPoster(target));}
+            }
+            else if(complete&&!item.episodes.isEmpty())content.addView(text("برای این سریال فصلی با قسمت قابل نمایش پیدا نشد.",14,MUTED,false),lp(-1,44));
+        }
+        if(complete&&!("episode".equals(item.kind))){
+            List<FarsiPlexTitle> catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
+            List<FarsiPlexTitle> related=DiscoveryPolicy.similar(item,catalog,8);
+            title("پیشنهادهای مشابه",related.isEmpty()?"با اطلاعات فعلی کاتالوگ، عنوان مشابهی پیدا نشد":"بر اساس ژانرهای ثبت‌شده در کاتالوگ");
+            if(!related.isEmpty()){
+                HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);
+                LinearLayout row=horizontal();row.setTag("poster-row");slider.addView(row);
+                for(FarsiPlexTitle relatedTitle:related)card(row,relatedTitle);
+                content.addView(slider,lp(-1,320));
+            }
+        }
+        if(focusTag!=null){View preserved=root.findViewWithTag(focusTag);if(preserved!=null&&preserved.isFocusable())focusPoster(preserved);}
+        else {View first=root.findViewWithTag("detail-primary");if(first!=null)first.requestFocus();}
+        info(complete?"اطلاعات عنوان آماده است":"در حال دریافت جزئیات…");
+    }
+    private void backToList(){
+        detailRequest++;
+        if(selected!=null&&"episode".equals(selected.kind)&&parentSeries!=null){
+            FarsiPlexTitle series=parentSeries;parentSeries=null;selected=series;showDetail(series,true);return;
+        }
+        if(returnView!=null){
+            generation++;root.removeAllViews();root.addView(returnView);
+            screen=returnScreen;content=returnContent;navigationBar=returnNavigation;status=returnStatus;
+            if("home".equals(screen)){addContinueWatching();refreshFeaturedCarousel();}
+            View target=returnFocus;returnView=null;
+            if(target!=null){
+                View restored=target.getTag()==null?target:root.findViewWithTag(target.getTag());
+                if(restored!=null)restored.post(()->focusPoster(restored));
+            }
+        }else if("series".equals(section))browse("series");else browse("movie");
+    }
+    private void configureAI(Runnable afterSave){
+        LinearLayout fields=vertical();fields.setPadding(dp(17),dp(8),dp(17),dp(8));
+        TextView explanation=text("آدرس Worker خصوصی خودت را وارد کن. کلید DeepSeek فقط در Cloudflare ذخیره می‌شود، نه در APK.",14,MUTED,false);
+        fields.addView(explanation,lp(-1,-2));
+        EditText endpoint=new EditText(this);endpoint.setSingleLine(true);
+        endpoint.setTextColor(WHITE);endpoint.setHintTextColor(MUTED);
+        endpoint.setHint("https://your-worker.workers.dev");
+        endpoint.setText(preferences.getString("ai_worker_origin","https://pooyan-tv-resolver.pooyan-ghorbani-real.workers.dev"));
+        fields.addView(endpoint,lp(-1,58));
+        EditText code=new EditText(this);code.setSingleLine(true);
+        code.setTextColor(WHITE);code.setHintTextColor(MUTED);
+        code.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        code.setHint("کد اتصال Worker (حداقل ۱۲ کاراکتر)");
+        code.setText(new ResolverSecretStore(preferences).get());
+        fields.addView(code,lp(-1,58));
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("اتصال موتور DeepSeek")
+          .setMessage("برای حفظ امنیت، فقط URL سرویس Cloudflare Worker و کد دسترسی اختصاصی خودت را وارد کن.")
+          .setView(fields).setNegativeButton("لغو",null).setPositiveButton("ذخیره",null).create();
+        dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(w->{
+            String origin=AiResolverUrlPolicy.normalize(endpoint.getText().toString());
+            String token=code.getText().toString().trim();
+            if(origin.isEmpty()||token.length()<12){
+                Toast.makeText(this,"URL HTTPS معتبر و کد حداقل ۱۲ کاراکتری لازم است",Toast.LENGTH_LONG).show();return;
+            }
+            if(!new ResolverSecretStore(preferences).save(token)){
+                Toast.makeText(this,"ذخیرهٔ امن کد انجام نشد",Toast.LENGTH_LONG).show();return;
+            }
+            preferences.edit().putString("ai_worker_origin",origin).apply();
+            dialog.dismiss();
+            if(afterSave!=null)afterSave.run();
+            else Toast.makeText(this,"اتصال ذخیره شد؛ برای آزمون، یک فیلم را انتخاب کن.",Toast.LENGTH_LONG).show();
+        }));
+        dialog.show();
+    }
+    private void resolveWithAI(FarsiPlexTitle item){
+        String worker=preferences.getString("ai_worker_origin","https://pooyan-tv-resolver.pooyan-ghorbani-real.workers.dev");
+        String code=new ResolverSecretStore(preferences).get();
+        if(AiResolverUrlPolicy.normalize(worker).isEmpty()||code.length()<12){
+            configureAI(()->resolveWithAI(item));return;
+        }
+        info("در حال بررسی لینک‌های عمومی برای «"+item.name+"» …");
+        String originalPage=item.url;
+        aiResolver.resolve(worker,code,item.url,item.name,(candidate,message)->{
+            if(destroyed||!"detail".equals(screen)||selected==null||!selected.url.equals(originalPage))return;
+            if(!candidate.isEmpty()){
+                // A server-side HTTP check is not a real playback test. Do not auto-play.
+                selected.publicStream=candidate;
+                showDetail(selected,true);
+                info("منبع بررسی‌شده دریافت شد؛ برای آزمایش واقعی روی ▶ پخش بزن.");
+            }else{
+                info(message);
+                new AlertDialog.Builder(this).setTitle("نتیجهٔ بررسی DeepSeek")
+                  .setMessage(message+"\n\nهوش مصنوعی نمی‌تواند لینک قفل‌شده، DRM یا منبعی که در صفحهٔ عمومی وجود ندارد ایجاد کند.")
+                  .setPositiveButton("متوجه شدم",null).show();
+            }
+        });
+    }
+    private void addStream(FarsiPlexTitle item){
+        EditText field=new EditText(this);field.setTextColor(WHITE);field.setHintTextColor(MUTED);
+        field.setHint("https://…/video.m3u8 یا video.mp4");
+        field.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        new AlertDialog.Builder(this).setTitle("منبع پخش مجاز برای «"+item.name+"»")
+            .setMessage("تنها لینک HTTPS با اجازهٔ استفاده را وارد کن. برنامه به محتوای قفل‌شده یا اشتراکی دسترسی غیرمجاز نمی‌گیرد.")
+            .setView(field).setNegativeButton("لغو",null).setPositiveButton("ذخیره",(d,w)->{
+                if(!streams.put("farsiplex:"+item.url,item.name,field.getText().toString().trim())){
+                    Toast.makeText(this,"لینک مستقیم معتبر MP4/HLS/DASH لازم است",Toast.LENGTH_LONG).show();return;
+                }
+                showDetail(item,true);
+            }).show();
+    }
+    private void play(String title,String url){play(title,url,"");}
+    private void play(String title,String url,String page){
+        if(!StreamDetector.isDirectMedia(url)){Toast.makeText(this,"منبع پخش معتبر نیست",Toast.LENGTH_LONG).show();return;}
+        Intent intent=new Intent(this,PlayerActivity.class);
+        intent.putExtra(PlayerActivity.EXTRA_TITLE,title);intent.putExtra(PlayerActivity.EXTRA_URL,url);
+        if(StreamDetector.isHttpsUrl(page))intent.putExtra(PlayerActivity.EXTRA_PAGE_URL,page);
+        List<PlaybackCandidate> candidates=new ArrayList<>();
+        if(selected!=null&&selected.url.equals(page))candidates.addAll(selected.candidates);
+        boolean exists=false;for(PlaybackCandidate c:candidates)if(c.url.equals(url))exists=true;
+        if(!exists)candidates.add(0,new PlaybackCandidate(url,page,0,false));
+        intent.putExtra("candidates",CandidateCodec.encode(candidates));
+        if(parentSeries!=null)intent.putExtra("episodes",EpisodeOrder.encode(parentSeries.episodes));
+        returnedFromPlayer=true;startActivity(intent);
+    }
+    private void askSearch(){
+        EditText input=new EditText(this);input.setSingleLine(true);input.setTextColor(WHITE);input.setHintTextColor(MUTED);
+        input.setText(searchTerm);input.setHint("نام فیلم یا سریال…");input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("جست‌وجوی فیلم و سریال")
+            .setView(input).setNeutralButton("🎙 صدا",(d,w)->voiceSearch()).setNegativeButton("لغو",null).setPositiveButton("جست‌وجو",(d,w)->search(input.getText().toString())).create();
+        input.setOnEditorActionListener((v,id,event)->{
+            if(id==EditorInfo.IME_ACTION_SEARCH||(event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER)){
+                String query=input.getText().toString();dialog.dismiss();search(query);return true;
+            }return false;
+        });
+        dialog.show();input.requestFocus();
+        input.postDelayed(()->((InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE))
+            .showSoftInput(input,InputMethodManager.SHOW_IMPLICIT),220);
+    }
+    private void search(String query){
+        searchTerm=query==null?"":query.trim();if(searchTerm.isEmpty())return;
+        if(searchTerm.length()>100)searchTerm=searchTerm.substring(0,100);
+        rememberSearch(searchTerm);
+        filterKind="";filterGenre="";filterYear=0;filterRating=0;searchRaw.clear();
+        begin("search");title("جست‌وجو","نتایج از کاتالوگ دریافت می‌شوند؛ فیلترها فقط روی دادهٔ واقعی اعمال می‌شوند.");
+        EditText queryInput=new EditText(this);queryInput.setTag("search-query");queryInput.setSingleLine(true);queryInput.setText(searchTerm);
+        queryInput.setHint("نام فیلم یا سریال");queryInput.setTextSize(19);queryInput.setTextColor(WHITE);queryInput.setHintTextColor(MUTED);
+        queryInput.setPadding(dp(20),dp(8),dp(20),dp(8));queryInput.setBackground(shape(0xFF171D28,16,true));
+        queryInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);queryInput.setSelectAllOnFocus(false);
+        queryInput.setOnEditorActionListener((v,action,event)->{if(action==EditorInfo.IME_ACTION_SEARCH||event!=null&&event.getKeyCode()==KeyEvent.KEYCODE_ENTER){search(queryInput.getText().toString());return true;}return false;});
+        content.addView(queryInput,lp(-1,58));
+        LinearLayout searchActions=horizontal();
+        searchActions.addView(button("جست‌وجو",true,()->search(queryInput.getText().toString())),lp(145,50));gap(searchActions,8);
+        searchActions.addView(button("جست‌وجوی صوتی",false,this::voiceSearch),lp(190,50));gap(searchActions,8);
+        searchActions.addView(button("فیلترها",false,this::searchFilters),lp(135,50));gap(searchActions,8);
+        searchActions.addView(button("سابقه",false,this::searchHistory),lp(110,50));
+        content.addView(searchActions,lp(-1,58));
+        LinearLayout results=vertical();searchResultsView=results;content.addView(results,lp(-1,-2));
+        results.addView(text("در حال جست‌وجو…",15,MUTED,false),lp(-1,75));
+        if(offlineUiTest){searchRaw.clear();renderFilteredSearch(null);return;}
+        int token=generation;
+        source.search(searchTerm,(items,error)->{
+            if(destroyed||generation!=token)return;
+            Object focus=getCurrentFocus()==null?null:getCurrentFocus().getTag();
+            searchRaw.clear();searchRaw.addAll(items);
+            renderFilteredSearch(error);
+            if(focus!=null){View restored=root.findViewWithTag(focus);if(restored!=null)focusPoster(restored);}
+            info(items.size()+" نتیجه پیدا شد");
+        });
+    }
+    private void renderFilteredSearch(String error){
+        if(!"search".equals(screen)||searchResultsView==null)return;
+        searchResultsView.removeAllViews();
+        List<FarsiPlexTitle> filtered=DiscoveryPolicy.filter(searchRaw,
+            new DiscoveryPolicy.Filter(filterKind,filterGenre,filterYear,filterRating));
+        if(filtered.isEmpty()){TextView empty=text(error!=null?error:
+            "با این فیلتر عنوانی پیدا نشد. فیلترها را پاک کن یا جست‌وجو را تغییر بده.",15,MUTED,false);empty.setTag("search-empty");searchResultsView.addView(empty,lp(-1,85));}
+        else{searchResultsView.addView(text(filtered.size()+" عنوان از "+searchRaw.size()+" نتیجه",14,MUTED,false),lp(-1,37));
+            showGrid(searchResultsView,filtered);}
+    }
+    private void searchFilters(){
+        if(!"search".equals(screen))return;
+        final String[] choices={"همهٔ فیلم‌ها و سریال‌ها","فقط فیلم","فقط سریال",
+            "فیلتر ژانر (متنی)","از سال ۲۰۲۰","از سال ۲۰۱۵","همهٔ سال‌ها",
+            "امتیاز ۷ به بالا","امتیاز ۸ به بالا","همهٔ امتیازها","پاک‌کردن تمام فیلترها"};
+        new AlertDialog.Builder(this).setTitle("فیلتر نتایج دریافت‌شده").setItems(choices,(d,n)->{
+            switch(n){
+                case 0:filterKind="";break;case 1:filterKind="movie";break;case 2:filterKind="series";break;
+                case 4:filterYear=2020;break;case 5:filterYear=2015;break;case 6:filterYear=0;break;
+                case 7:filterRating=7;break;case 8:filterRating=8;break;case 9:filterRating=0;break;
+                case 10:filterKind="";filterGenre="";filterYear=0;filterRating=0;break;
+                case 3:genreFilterDialog();return;
+            }
+            renderFilteredSearch(null);
+        }).setNegativeButton("بازگشت",null).show();
+    }
+    private void genreFilterDialog(){
+        EditText input=new EditText(this);input.setSingleLine(true);input.setText(filterGenre);
+        input.setHint("مثلاً Drama یا کمدی");
+        new AlertDialog.Builder(this).setTitle("ژانر موجود در اطلاعات فیلم").setView(input)
+            .setNegativeButton("لغو",null)
+            .setPositiveButton("اعمال",(d,w)->{filterGenre=input.getText().toString().trim();renderFilteredSearch(null);})
+            .show();
+    }
+    private void rememberSearch(String q){
+        JSONArray old;try{old=new JSONArray(preferences.getString("recent_queries","[]"));}catch(Exception e){old=new JSONArray();}
+        JSONArray fresh=new JSONArray();fresh.put(q);
+        for(int i=0;i<old.length()&&fresh.length()<12;i++){
+            String s=old.optString(i,"");if(!s.isEmpty()&&!s.equals(q))fresh.put(s);
+        }
+        preferences.edit().putString("recent_queries",fresh.toString()).apply();
+    }
+    private void searchHistory(){
+        JSONArray old;try{old=new JSONArray(preferences.getString("recent_queries","[]"));}catch(Exception e){old=new JSONArray();}
+        final List<String> entries=new ArrayList<>();for(int i=0;i<old.length();i++){
+            String s=old.optString(i,"");if(!s.isEmpty())entries.add(s);
+        }
+        new AlertDialog.Builder(this).setTitle("سابقهٔ جست‌وجوی همین پروفایل")
+            .setItems(entries.toArray(new String[0]),(d,n)->search(entries.get(n)))
+            .setNeutralButton("پاک‌کردن سابقه",(d,w)->preferences.edit().remove("recent_queries").apply())
+            .setNegativeButton("بازگشت",null).show();
+    }
+    private void scanSearch(String kind,int p,int token,String q,List<FarsiPlexTitle> found,Set<String> urls,LinearLayout result,Runnable finished){
+        if(destroyed||token!=generation)return;
+        if(p>3){finished.run();return;} // bounded search to keep the site load modest; use browse for deeper pages
+        source.list(kind,p,(items,error)->{
+            if(destroyed||generation!=token)return;
+            for(FarsiPlexTitle item:items){
+                if(normalizeSearch(item.name).contains(q)&&urls.add(item.url))found.add(item);
+            }
+            if(items.isEmpty()||error!=null)finished.run();
+            else scanSearch(kind,p+1,token,q,found,urls,result,finished);
+        });
+    }
+    private static String normalizeSearch(String v){
+        return v.toLowerCase(java.util.Locale.ROOT).replace('ي','ی').replace('ك','ک').trim();
+    }
+    private void showGrid(LinearLayout container,List<FarsiPlexTitle> items){
+        LinearLayout row=null;int perRow=columns();
+        for(int i=0;i<items.size();i++){
+            if(i%perRow==0){row=horizontal();row.setGravity(Gravity.TOP);container.addView(row,lp(-1,318));}
+            card(row,items.get(i));
+        }
+    }
+    private List<FarsiPlexTitle> favoriteItems(){
+        List<FarsiPlexTitle> result=new ArrayList<>();
+        try{JSONArray json=new JSONArray(preferences.getString("favorites","[]"));
+            for(int i=0;i<Math.min(json.length(),150);i++){
+                JSONObject j=json.optJSONObject(i);if(j==null)continue;
+                String raw=j.optString("url","");
+                String url=NamakadeCatalog.safeUrl(raw);
+                String kind=j.optString("kind","");
+                if(url.isEmpty()){
+                    url=FarsiPlexUrlPolicy.normalize(FarsiPlexUrlPolicy.SITE,raw);
+                    kind=FarsiPlexUrlPolicy.mediaType(url);
+                }else if(kind.isEmpty())kind=url.contains("/movies/")?"movie":"series";
+                if(url.isEmpty()||kind.isEmpty())continue;
+                FarsiPlexTitle item=new FarsiPlexTitle(url,kind,j.optString("title"));
+                String poster=j.optString("poster","");
+                if(ImageUrlPolicy.allowed(poster))item.poster=poster;
+                item.genre=j.optString("genre","");item.year=j.optString("year","");
+                result.add(item);
+            }
+        }catch(Exception ignored){}
+        return result;
+    }
+    private boolean isFavorite(FarsiPlexTitle item){for(FarsiPlexTitle f:favoriteItems())if(f.url.equals(item.url))return true;return false;}
+    private void toggleFavorite(FarsiPlexTitle item){
+        List<FarsiPlexTitle> f=favoriteItems();boolean removed=f.removeIf(e->e.url.equals(item.url));
+        if(!removed)f.add(0,item);
+        JSONArray json=new JSONArray();
+        try{for(int i=0;i<Math.min(f.size(),100);i++){
+            FarsiPlexTitle t=f.get(i);JSONObject value=new JSONObject();
+            value.put("url",t.url);value.put("title",t.name);value.put("poster",t.poster);value.put("kind",t.kind);value.put("genre",t.genre);value.put("year",t.year);json.put(value);
+        }}catch(Exception ignored){}
+        preferences.edit().putString("favorites",json.toString()).apply();
+    }
+    private void favorites(){
+        begin("favorites");title("علاقه‌مندی‌های من","ذخیره‌شده روی همین تلویزیون، بدون حساب کاربری");
+        List<FarsiPlexTitle> list=favoriteItems();
+        if(list.isEmpty())content.addView(text("هنوز عنوانی را ذخیره نکرده‌ای.",16,MUTED,false),lp(-1,73));
+        else showGrid(content,list);
+    }
+    @Override public void onBackPressed(){
+        if("detail".equals(screen))backToList();
+        else if(!"home".equals(screen))home();
+        else super.onBackPressed();
+    }
+
+    private void homeRow(LinearLayout slot,String heading,String note,List<FarsiPlexTitle> titles){
+        slot.removeAllViews();
+        TextView name=text(heading,23,WHITE,true);name.setPadding(0,dp(15),0,dp(5));slot.addView(name,lp(-1,55));
+        if(!note.isEmpty())slot.addView(text(note,12,MUTED,false),lp(-1,30));
+        if(titles.isEmpty()){slot.addView(text("هنوز عنوانی در این بخش نیست؛ فهرست‌ها یا لیست من را بررسی کنید.",14,MUTED,false),lp(-1,55));return;}
+        HorizontalScrollView slider=new HorizontalScrollView(this);slider.setHorizontalScrollBarEnabled(false);LinearLayout row=horizontal();row.setGravity(Gravity.TOP);slider.addView(row);
+        for(int i=0;i<Math.min(12,titles.size());i++)card(row,titles.get(i));slot.addView(slider,lp(-1,320));
+    }
+    private void refreshHomeExtras(){
+        if(!"home".equals(screen)||favoriteSlot==null||recommendSlot==null)return;
+        refreshFeaturedCarousel();
+        Object focus=getCurrentFocus()==null?null:getCurrentFocus().getTag();
+        List<FarsiPlexTitle> favorites=favoriteItems(),catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
+        if(movieSlot!=null){homeRow(movieSlot,"فیلم‌ها","انتخاب‌های کاتالوگ موجود",loadedMovies);
+            movieSlot.setVisibility(preferences.getBoolean("home_movies",true)?View.VISIBLE:View.GONE);}
+        homeRow(favoriteSlot,"لیست من","ذخیره‌شده برای همین پروفایل",favorites);
+        favoriteSlot.setVisibility(preferences.getBoolean("home_favorites",true)?View.VISIBLE:View.GONE);
+        homeRow(recommendSlot,"پیشنهاد برای شما","بر اساس ژانر لیست من و تماشای اخیر؛ فقط روی این دستگاه",Recommendations.rank(catalog,favorites,new LibraryStore(this).watched()));
+        recommendSlot.setVisibility(preferences.getBoolean("home_recommendations",true)?View.VISIBLE:View.GONE);
+        if(focus!=null){View v=root.findViewWithTag(focus);if(v!=null)v.requestFocus();}
+    }
+    private void switchProfile(String id){new ProfileStore(this).select(id);preferences=ProfileStore.data(this,"pooyan_farsiplex_v04");returnView=null;parentSeries=null;detailRequest++;home();}
+    private void chooseProfile(boolean manage){
+        ProfileStore profiles=new ProfileStore(this);JSONArray list=profiles.list();
+        begin("profiles");title("پروفایل‌ها","هر پروفایل فهرست، تنظیمات و پیشرفت تماشای خودش را دارد.");
+        LinearLayout row=null;int inRow=0;
+        for(int i=0;i<list.length();i++){
+            JSONObject item=list.optJSONObject(i);if(item==null)continue;
+            String id=item.optString("id"),name=item.optString("name"),avatar=ProfileStore.avatar(item.optInt("avatar"));
+            boolean active=id.equals(profiles.active());
+            if(row==null||inRow>=3){row=horizontal();row.setGravity(Gravity.TOP);LinearLayout.LayoutParams rp=lp(-1,225);rp.bottomMargin=dp(16);content.addView(row,rp);inRow=0;}
+            LinearLayout card=vertical();card.setTag("profile:"+id);card.setGravity(Gravity.CENTER);card.setFocusable(true);card.setClickable(true);
+            card.setFocusableInTouchMode(true);
+            card.setPadding(dp(14),dp(15),dp(14),dp(12));card.setBackground(shape(active?0xFF202431:PANEL,20,active));
+            TextView avatarView=text(avatar,37,active?0xFFFFCFD1:WHITE,true);avatarView.setGravity(Gravity.CENTER);
+            card.addView(avatarView,lp(-1,64));
+            TextView profileName=text(name,17,WHITE,true);profileName.setGravity(Gravity.CENTER);profileName.setMaxLines(1);profileName.setEllipsize(TextUtils.TruncateAt.END);
+            card.addView(profileName,lp(-1,34));
+            TextView state=text(active?"پروفایل فعال":"انتخاب پروفایل",12,active?0xFFFFCFD1:MUTED,false);state.setGravity(Gravity.CENTER);
+            card.addView(state,lp(-1,28));
+            card.setOnFocusChangeListener((v,focus)->{card.setBackground(shape(focus?0xFF29212B:active?0xFF202431:PANEL,20,focus||active));card.setScaleX(focus?1.045f:1f);card.setScaleY(focus?1.045f:1f);});
+            card.setOnClickListener(v->{if(manage&&active)editProfile(id);else switchProfile(id);});TvUi.remoteClick(card);
+            if(active)card.postDelayed(card::requestFocus,80);
+            LinearLayout.LayoutParams cp=lp(210,190);cp.rightMargin=dp(14);row.addView(card,cp);inRow++;
+        }
+        LinearLayout actions=horizontal();content.addView(actions,lp(-1,60));
+        actions.addView(button("ایجاد پروفایل",true,()->editProfile(null)),lp(190,50));gap(actions,10);
+        actions.addView(button("ویرایش پروفایل فعال",false,()->editProfile(profiles.active())),lp(245,50));gap(actions,10);
+        actions.addView(button("بازگشت به خانه",false,this::home),lp(190,50));
+    }
+    private void editProfile(String id){
+        ProfileStore store=new ProfileStore(this);EditText name=new EditText(this);name.setSingleLine(true);name.setHint("نام پروفایل، حداکثر ۳۰ حرف");final int[] avatar={0};
+        JSONArray list=store.list();for(int i=0;i<list.length();i++){JSONObject o=list.optJSONObject(i);if(o.optString("id").equals(id)){name.setText(o.optString("name"));avatar[0]=o.optInt("avatar");}}
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle(id==null?"پروفایل جدید":"نام و نشان پروفایل").setView(name)
+            .setPositiveButton("ذخیره",null).setNeutralButton("نشان",null).setNegativeButton(id==null?"لغو":"حذف پروفایل",(d,w)->{if(id!=null)new AlertDialog.Builder(this).setTitle("حذف پروفایل و همهٔ داده‌هایش؟").setMessage("لیست من، تاریخچه و تنظیمات این پروفایل حذف می‌شوند. آخرین پروفایل قابل حذف نیست.").setNegativeButton("لغو",null).setPositiveButton("حذف",(a,b)->{if(store.delete(id))switchProfile(store.active());else Toast.makeText(this,"آخرین پروفایل حذف نمی‌شود",Toast.LENGTH_LONG).show();}).show();}).create();
+        dialog.setOnShowListener(d->{dialog.getButton(-1).setOnClickListener(v->{if(store.edit(id,name.getText().toString(),avatar[0])){dialog.dismiss();chooseProfile(true);}else Toast.makeText(this,"نام معتبر یا ظرفیت حداکثر ۸ پروفایل را بررسی کنید",Toast.LENGTH_LONG).show();});dialog.getButton(-3).setOnClickListener(v->new AlertDialog.Builder(this).setTitle("نشان").setItems(new String[]{"●","★","◆","▲","♥","☀"},(a,n)->avatar[0]=n).show());});dialog.show();
+    }
+    private void settings(){
+        if(ParentalPin.active(this)){
+            EditText input=pinInput();
+            new AlertDialog.Builder(this).setTitle("PIN تنظیمات")
+                .setMessage("برای تغییر تنظیمات کد ۴ تا ۸ رقمی وارد کن.").setView(input)
+                .setNegativeButton("لغو",null)
+                .setPositiveButton("ورود",(d,w)->{
+                    if(ParentalPin.verify(this,input.getText().toString()))settingsUnlocked();
+                    else Toast.makeText(this,"PIN نادرست است",Toast.LENGTH_LONG).show();
+                }).show();return;
+        }
+        settingsUnlocked();
+    }
+    private EditText pinInput(){EditText input=new EditText(this);
+        input.setSingleLine(true);input.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        input.setHint("۴ تا ۸ رقم");return input;}
+    private void pinSettings(){
+        if(ParentalPin.active(this)){
+            EditText input=pinInput();
+            new AlertDialog.Builder(this).setTitle("برداشتن قفل تنظیمات")
+                .setMessage("PIN فعلی را وارد کن. این قفل، رده‌بندی سنی محتوا نیست.")
+                .setView(input).setNegativeButton("لغو",null)
+                .setPositiveButton("حذف قفل",(d,w)->Toast.makeText(this,
+                    ParentalPin.clear(this,input.getText().toString())?"قفل برداشته شد":"PIN نادرست است",Toast.LENGTH_LONG).show())
+                .show();return;
+        }
+        EditText first=pinInput();
+        new AlertDialog.Builder(this).setTitle("تنظیم PIN برای قفل تنظیمات")
+            .setMessage("این قفل فقط جلوی تغییر تنظیمات را می‌گیرد؛ محتوای مناسب کودک را تضمین نمی‌کند.")
+            .setView(first).setNegativeButton("لغو",null)
+            .setPositiveButton("ادامه",(d,w)->{
+                String pin=first.getText().toString();
+                if(!ParentalPin.valid(pin)){Toast.makeText(this,"PIN باید ۴ تا ۸ رقم باشد",Toast.LENGTH_LONG).show();return;}
+                EditText confirm=pinInput();
+                new AlertDialog.Builder(this).setTitle("تکرار PIN").setView(confirm)
+                    .setNegativeButton("لغو",null)
+                    .setPositiveButton("ثبت",(d2,w2)->Toast.makeText(this,
+                        pin.equals(confirm.getText().toString())&&ParentalPin.set(this,pin)?
+                        "PIN فعال شد؛ آن را در جای امن نگه دار":"ثبت انجام نشد یا PINها یکسان نبود",Toast.LENGTH_LONG).show())
+                    .show();
+            }).show();
+    }
+    private void customizeHome(){
+        final String[] keys={"home_continue","home_movies","home_favorites","home_recommendations"};
+        final String[] labels={"ادامهٔ تماشا","فهرست فیلم‌ها","علاقه‌مندی‌ها","پیشنهاد برای شما"};
+        String[] options=new String[keys.length];
+        for(int i=0;i<keys.length;i++)options[i]=labels[i]+": "+(preferences.getBoolean(keys[i],true)?"نمایش":"مخفی");
+        new AlertDialog.Builder(this).setTitle("شخصی‌سازی صفحهٔ خانه")
+            .setItems(options,(d,n)->{
+                preferences.edit().putBoolean(keys[n],!preferences.getBoolean(keys[n],true)).apply();
+                if("home".equals(screen))home();customizeHome();
+            }).setNegativeButton("بازگشت",null).show();
+    }
+    private void settingsUnlocked(){
+        SharedPreferences playerPrefs=ProfileStore.data(this,"player_preferences");ProfileStore profiles=new ProfileStore(this);
+        String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی","نگهداری، آپدیت GitHub و پشتیبان خانوادگی","شخصی‌سازی صفحهٔ خانه","قفل PIN تنظیمات"};
+        new AlertDialog.Builder(this).setTitle("تنظیمات محلی").setItems(options,(d,n)->{switch(n){
+            case 0:chooseProfile(true);break;case 1:profiles.picker(!profiles.picker());settingsUnlocked();break;case 2:historyScreen();break;
+            case 3:playerPrefs.edit().putBoolean("autoplay",!playerPrefs.getBoolean("autoplay",true)).apply();settingsUnlocked();break;
+            case 4:new AlertDialog.Builder(this).setTitle("زمان شمارش").setItems(new String[]{"۵ ثانیه","۱۰ ثانیه","۲۰ ثانیه"},(a,i)->playerPrefs.edit().putInt("countdown",new int[]{5,10,20}[i]).apply()).show();break;
+            case 5:new AlertDialog.Builder(this).setTitle("درصد تماشا برای پایان").setItems(new String[]{"۹۰٪","۹۵٪","۹۷٪","۹۹٪"},(a,i)->new LibraryStore(this).completion(new int[]{90,95,97,99}[i])).show();break;
+            case 6:new AlertDialog.Builder(this).setTitle("زبان سرویس گفتار").setItems(new String[]{"فارسی","English"},(a,i)->playerPrefs.edit().putString("voice",i==0?"fa-IR":"en-US").apply()).show();break;
+            case 7:transfer(false);break;case 8:transfer(true);break;case 9:configureAI(null);break;case 10:startActivity(new Intent(this,MaintenanceActivity.class));break;
+            case 11:customizeHome();break;case 12:pinSettings();break;
+        }}).setNegativeButton("بازگشت",null).show();
+    }
+    private void historyScreen(){
+        begin("history");title("تاریخچهٔ تماشا","از تاریخچهٔ بازدید صفحات جداست؛ فقط همین پروفایل");LibraryStore library=new LibraryStore(this);
+        content.addView(button("موارد تمام‌شده",false,()->historyEntries(library.completed(),true)),lp(240,50));
+        content.addView(button("پاک‌کردن تاریخچه",false,()->new AlertDialog.Builder(this).setTitle("تاریخچه، پایان‌ها و ادامهٔ تماشا پاک شوند؟").setMessage("علاقه‌مندی‌ها باقی می‌مانند.").setNegativeButton("لغو",null).setPositiveButton("پاک‌کردن",(d,w)->{library.clearHistory();historyScreen();}).show()),lp(240,50));
+        renderHistory(library.watched());
+    }
+    private void historyEntries(List<LibraryStore.Entry> list,boolean completed){begin("history");title(completed?"تمام‌شده‌ها":"تاریخچه","");renderHistory(list);}
+    private void renderHistory(List<LibraryStore.Entry> list){
+        if(list.isEmpty())content.addView(text("هنوز چیزی تماشا نشده است.",16,MUTED,false),lp(-1,65));
+        for(LibraryStore.Entry e:list)content.addView(button(e.title+" · "+PlaybackResumePolicy.time(e.positionMs),false,()->new AlertDialog.Builder(this).setTitle(e.title).setItems(new String[]{"بازکردن عنوان","حذف فقط این مورد"},(d,n)->{if(n==1){new LibraryStore(this).forget(e.pageUrl,e.url);historyScreen();}else if(DataTransfer.page(e.pageUrl)){String kind=FarsiPlexUrlPolicy.mediaType(e.pageUrl);if(kind.isEmpty())kind=e.pageUrl.contains("/episodes/")?"episode":e.pageUrl.contains("/series")?"series":"movie";detail(new FarsiPlexTitle(e.pageUrl,kind,e.title));}else play(e.title,e.url,e.pageUrl);}).show()),lp(-1,60));
+    }
+    private void voiceSearch(){
+        Intent speech=new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);speech.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);speech.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,ProfileStore.data(this,"player_preferences").getString("voice","fa-IR"));speech.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"نام فیلم یا سریال");
+        try{if(speech.resolveActivity(getPackageManager())==null){Toast.makeText(this,VoiceInputPolicy.error(false,false),Toast.LENGTH_LONG).show();askSearch();return;}startActivityForResult(speech,VOICE);}catch(SecurityException e){Toast.makeText(this,VoiceInputPolicy.error(true,true),Toast.LENGTH_LONG).show();askSearch();}catch(android.content.ActivityNotFoundException e){Toast.makeText(this,VoiceInputPolicy.error(false,false),Toast.LENGTH_LONG).show();askSearch();}
+    }
+    private void transfer(boolean importing){
+        Intent intent=new Intent(importing?Intent.ACTION_OPEN_DOCUMENT:Intent.ACTION_CREATE_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/json");if(!importing)intent.putExtra(Intent.EXTRA_TITLE,"Pooyan-profile.json");
+        try{startActivityForResult(intent,importing?IMPORT:EXPORT);}catch(android.content.ActivityNotFoundException e){Toast.makeText(this,"انتخاب‌گر فایل روی این دستگاه موجود نیست؛ دادهٔ نسخهٔ قبلی به‌صورت خودکار قابل دسترسی نیست.",Toast.LENGTH_LONG).show();}
+    }
+    @Override protected void onActivityResult(int request,int result,Intent data){
+        super.onActivityResult(request,result,data);
+        if(request==VOICE){String text=result==RESULT_OK&&data!=null?VoiceInputPolicy.result(data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)):"";if(!text.isEmpty())search(text);else{Toast.makeText(this,VoiceInputPolicy.error(true,false),Toast.LENGTH_LONG).show();askSearch();}return;}
+        if((request!=EXPORT&&request!=IMPORT)||result!=RESULT_OK||data==null||data.getData()==null)return;
+        android.net.Uri uri=data.getData();String transferProfile=new ProfileStore(this).active();SharedPreferences snapshot=preferences;LibraryStore library=new LibraryStore(this);
+        if(request==EXPORT){localIo.execute(()->{try(java.io.OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new java.io.IOException();out.write(DataTransfer.exportData(snapshot,library).getBytes(java.nio.charset.StandardCharsets.UTF_8));runOnUiThread(()->Toast.makeText(this,"خروجی بدون توکن و لینک رسانه ذخیره شد",Toast.LENGTH_LONG).show());}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"ذخیرهٔ فایل انجام نشد",Toast.LENGTH_LONG).show());}});}
+        else localIo.execute(()->{try(java.io.InputStream in=getContentResolver().openInputStream(uri);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){if(in==null)throw new java.io.IOException();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){if(out.size()+n>262144)throw new java.io.IOException();out.write(b,0,n);}String raw=out.toString("UTF-8");runOnUiThread(()->{if(destroyed||!transferProfile.equals(new ProfileStore(this).active()))return;new AlertDialog.Builder(this).setTitle("دادهٔ فایل با همین پروفایل ادغام شود؟").setMessage("این روش به دادهٔ خصوصی v0.5.1 دسترسی ندارد. فقط فایل خروجی سازگار پذیرفته می‌شود؛ دادهٔ فعلی پاک نمی‌شود.").setNegativeButton("لغو",null).setPositiveButton("ادغام",(d,w)->localIo.execute(()->{try{if(!transferProfile.equals(new ProfileStore(this).active()))return;DataTransfer.importData(raw,snapshot,library);runOnUiThread(()->{if(!destroyed)home();});}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"فایل معتبر یا سازگار نیست؛ کلید و لینک خصوصی وارد نمی‌شود",Toast.LENGTH_LONG).show());}})).show();});}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"خواندن فایل انجام نشد یا بیش از حد بزرگ است",Toast.LENGTH_LONG).show());}});
+    }
+    @Override protected void onResume(){
+        super.onResume();scheduleHeroRotation();
+        if(returnedFromPlayer){returnedFromPlayer=false;if("home".equals(screen))addContinueWatching();}
+    }
+    @Override protected void onStop(){
+        heroHandler.removeCallbacks(rotateHero);
+        super.onStop();
+    }
+    @Override protected void onDestroy(){
+        heroHandler.removeCallbacks(rotateHero);
+        destroyed=true;generation++;localIo.shutdownNow();source.close();images.close();aiResolver.close();super.onDestroy();
     }
 }

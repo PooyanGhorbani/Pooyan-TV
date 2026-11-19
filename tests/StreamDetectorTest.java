@@ -7,7 +7,7 @@ public class StreamDetectorTest {
         if (!condition) throw new AssertionError(message);
     }
     public static void main(String[] args) {
-        check(StreamDetector.isHttpsUrl("https://mobile.namakade.com:8443/serieses/rivals?private"), "HTTPS special port");
+        check(StreamDetector.isHttpsUrl("https://media.example.com:8443/series/demo?private"), "HTTPS special port");
         check(StreamDetector.isDirectMedia("https://cdn.example.com/hls/index.m3u8?token=abc"), "HLS query token");
         check(StreamDetector.isDirectMedia("https://cdn.example.com/video.mpd"), "DASH");
         check(StreamDetector.isDirectMedia("https://cdn.example.com/video.mp4"), "MP4");

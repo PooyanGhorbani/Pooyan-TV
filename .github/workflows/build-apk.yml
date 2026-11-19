@@ -1,16 +1,26 @@
-name: Build Pooyan TV APK
+name: Build Pooyan TV v0.6.0 Premium Preview
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
+    branches: [dev/v0.6.0-premium]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - '.github/workflows/build-apk.yml'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+concurrency:
+  group: pooyan-v060-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -26,29 +36,128 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Run offline checks
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Worker tests (no deployment)
+        run: node --test resolver-worker/resolver.test.mjs
+      - name: Offline security and syntax tests
         run: bash scripts/verify-offline.sh
-      - name: Build installable debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug assembleDebugAndroidTest lintDebug
+      - name: Build, unit tests and lint
+        run: |
+          gradle --no-daemon --stacktrace assembleDebug assembleRelease testDebugUnitTest lintDebug lintRelease || {
+            sleep 15
+            gradle --no-daemon --stacktrace assembleDebug assembleRelease testDebugUnitTest lintDebug lintRelease
+          }
+      - name: Public HTTP integration checks (no device playback)
+        run: POOYAN_LIVE_CHECK=1 gradle --no-daemon testDebugUnitTest --rerun-tasks
+      - name: Package preview (no automatic TV installation)
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk Pooyan-TV-v0.6.0-premium-preview-r3.apk
+          sha256sum Pooyan-TV-v0.6.0-premium-preview-r3.apk > SHA256SUMS-v0.6.0-r3.txt
+      - name: Upload preview APK and SHA256
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pooyan-TV-v0.6.0-Premium-Preview
+          path: |
+            Pooyan-TV-v0.6.0-premium-preview-r3.apk
+            SHA256SUMS-v0.6.0-r3.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pooyan-TV-v0.6.0-Reports
+          path: |
+            app/build/reports/lint-results-*
+            app/build/reports/tests/**
+            app/build/test-results/**
+            app/build/reports/live-*.tsv
+          if-no-files-found: ignore
+          retention-days: 14
+  emulator:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Enable KVM on CI host
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            gradle --no-daemon connectedDebugAndroidTest
+            # Gradle's UTP removes its test apps. Reinstall only on the ephemeral CI emulator.
+            adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+            adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb -s emulator-5554 shell am instrument -w -e class 'com.pooyan.namakadetv.TvPremiumInstrumentedTest#profileDataAndRealPreferenceRestartAreIsolated,com.pooyan.namakadetv.TvPremiumInstrumentedTest#homeStartsAndCapturesNativeLayout' com.pooyan.namakadetv.preview060.test/androidx.test.runner.AndroidJUnitRunner > app/build/reports/restart-seed.txt
+            grep -Fq 'OK (2 tests)' app/build/reports/restart-seed.txt
+            mkdir -p app/build/reports/emulator-images
+            adb -s emulator-5554 pull /sdcard/Android/data/com.pooyan.namakadetv.preview060/files/emulator-home.png app/build/reports/emulator-images/home.png
+            adb -s emulator-5554 shell run-as com.pooyan.namakadetv.preview060 cat shared_prefs/namakade_local_library_default.xml > app/build/reports/prefs-before.xml
+            adb -s emulator-5554 shell run-as com.pooyan.namakadetv.preview060 cat shared_prefs/family_profiles.xml > app/build/reports/profiles-before.xml
+            adb -s emulator-5554 shell am start -W -n com.pooyan.namakadetv.preview060/com.pooyan.namakadetv.MainActivity
+            adb -s emulator-5554 shell am force-stop com.pooyan.namakadetv.preview060
+            adb -s emulator-5554 shell am start -W -n com.pooyan.namakadetv.preview060/com.pooyan.namakadetv.MainActivity
+            sleep 3
+            adb -s emulator-5554 shell input keyevent 20
+            sleep 1
+            adb -s emulator-5554 shell input keyevent 20
+            sleep 1
+            adb -s emulator-5554 shell run-as com.pooyan.namakadetv.preview060 cat shared_prefs/namakade_local_library_default.xml > app/build/reports/prefs-after.xml
+            adb -s emulator-5554 exec-out screencap -p > app/build/reports/emulator-images/restarted.png
+            adb -s emulator-5554 shell uiautomator dump /sdcard/pooyan-restart.xml
+            adb -s emulator-5554 pull /sdcard/pooyan-restart.xml app/build/reports/pooyan-restart.xml
+            grep -q '00:15' app/build/reports/pooyan-restart.xml
+            mkdir -p app/build/reports/emulator-images
+            adb -s emulator-5554 pull /sdcard/Android/data/com.pooyan.namakadetv.preview060/files/emulator-home.png app/build/reports/emulator-images/home.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pooyan-tv-v0.1-debug-apk
-          if-no-files-found: error
+          name: Pooyan-TV-v0.6.0-Emulator-Reports
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            app/build/reports/lint-results-debug.html
-      - name: Publish v0.1 prerelease
-        if: github.ref == 'refs/heads/main'
+            app/build/reports/androidTests/**
+            app/build/reports/emulator-images/**
+            app/build/reports/pooyan-restart.xml
+            app/build/reports/restart-seed.txt
+            app/build/reports/prefs-*.xml
+            app/build/reports/profiles-before.xml
+            app/build/outputs/androidTest-results/**
+          if-no-files-found: ignore
+  publish:
+    needs: [build, emulator]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Pooyan-TV-v0.6.0-Premium-Preview
+          path: release
+      - name: Publish v0.6.0 only after checks
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk pooyan-tv-v0.1-debug.apk
-          sha256sum pooyan-tv-v0.1-debug.apk > SHA256SUMS.txt
-          if ! gh release view v0.1 >/dev/null 2>&1; then
-            gh release create v0.1 --prerelease --title "Pooyan TV v0.1" --notes "Installable debug APK. Physical Xiaomi TV testing is documented separately. Debug signatures may change between builds. Never uninstall to bypass a signature mismatch without approval."
-          fi
-          if ! gh release view v0.1 --json assets --jq '.assets[].name' | grep -qx pooyan-tv-v0.1-debug.apk; then
-            gh release upload v0.1 pooyan-tv-v0.1-debug.apk SHA256SUMS.txt
+          cd release
+          sha256sum -c SHA256SUMS-v0.6.0-r3.txt
+          gh release view v0.6.0 >/dev/null 2>&1 || gh release create v0.6.0 --target "$GITHUB_SHA" --prerelease --title 'Pooyan TV v0.6.0 Preview' --notes-file ../docs/V060_RELEASE_FA.md
+          if ! gh release view v0.6.0 --json assets --jq '.assets[].name' | grep -qx Pooyan-TV-v0.6.0-premium-preview-r3.apk; then
+            gh release upload v0.6.0 Pooyan-TV-v0.6.0-premium-preview-r3.apk SHA256SUMS-v0.6.0-r3.txt
           fi
