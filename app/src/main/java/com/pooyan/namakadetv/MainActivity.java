@@ -1077,6 +1077,7 @@ public final class MainActivity extends Activity {
             boolean active=id.equals(profiles.active());
             if(row==null||inRow>=3){row=horizontal();row.setGravity(Gravity.TOP);LinearLayout.LayoutParams rp=lp(-1,225);rp.bottomMargin=dp(16);content.addView(row,rp);inRow=0;}
             LinearLayout card=vertical();card.setTag("profile:"+id);card.setGravity(Gravity.CENTER);card.setFocusable(true);card.setClickable(true);
+            card.setFocusableInTouchMode(true);
             card.setPadding(dp(14),dp(15),dp(14),dp(12));card.setBackground(shape(active?0xFF202431:PANEL,20,active));
             TextView avatarView=text(avatar,37,active?0xFFFFCFD1:WHITE,true);avatarView.setGravity(Gravity.CENTER);
             card.addView(avatarView,lp(-1,64));
@@ -1086,7 +1087,7 @@ public final class MainActivity extends Activity {
             card.addView(state,lp(-1,28));
             card.setOnFocusChangeListener((v,focus)->{card.setBackground(shape(focus?0xFF29212B:active?0xFF202431:PANEL,20,focus||active));card.setScaleX(focus?1.045f:1f);card.setScaleY(focus?1.045f:1f);});
             card.setOnClickListener(v->{if(manage&&active)editProfile(id);else switchProfile(id);});TvUi.remoteClick(card);
-            if(active)card.post(card::requestFocus);
+            if(active)card.postDelayed(card::requestFocus,80);
             LinearLayout.LayoutParams cp=lp(210,190);cp.rightMargin=dp(14);row.addView(card,cp);inRow++;
         }
         LinearLayout actions=horizontal();content.addView(actions,lp(-1,60));

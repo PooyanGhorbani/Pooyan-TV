@@ -31,6 +31,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 adb devices -l > "$diag_dir/adb-devices-initial.log" 2>&1 || true
+adb -s emulator-5554 logcat -G 16M > "$diag_dir/logcat-buffer-size.log" 2>&1 || true
 adb -s emulator-5554 shell wm size > "$diag_dir/display-size-initial.log" 2>&1 || true
 adb -s emulator-5554 shell wm density > "$diag_dir/display-density-initial.log" 2>&1 || true
 (while [[ "$active" -eq 1 ]]; do
@@ -64,6 +65,15 @@ if [[ "$mode" == "full" || "$mode" == "logical-720" ]]; then
   mkdir -p "$diag_dir/previews"
   adb -s emulator-5554 pull /sdcard/Android/data/com.pooyan.namakadetv.dev070/files "$diag_dir/previews/app-files" \
     > "$diag_dir/previews/pull.log" 2>&1 || true
+  for image in ultimate-home.png ultimate-home-live.png ultimate-movie-details.png ultimate-series-details.png ultimate-search.png ultimate-player.png ultimate-player-unavailable.png; do
+    awk -v image="$image" '
+      index($0,"UltimatePreview: PNG_BEGIN:" image ":"){active=1;next}
+      index($0,"UltimatePreview: PNG_END:" image){active=0;ended=1;next}
+      active { marker="UltimatePreview: PNG_CHUNK:" image ":"; at=index($0,marker); if(at){data=substr($0,at+length(marker)); sub(/^[0-9]+:/,"",data); printf "%s",data; found=1} }
+      END { if(found&&ended) printf "\n" }
+    ' "$diag_dir/logcat-live.log" | base64 --decode > "$diag_dir/previews/$image" 2> "$diag_dir/previews/$image.decode.log" || true
+    if ! grep -q "UltimatePreview: PNG_END:$image" "$diag_dir/logcat-live.log" || [[ ! -s "$diag_dir/previews/$image" ]]; then rm -f "$diag_dir/previews/$image"; fi
+  done
 fi
 if [[ "$mode" == "full" || "$mode" == "logical-720" ]]; then
   awk '/DetailPreview: PNG_CHUNK:[0-9][0-9][0-9][0-9]:/ { sub(/^.*DetailPreview: PNG_CHUNK:[^:]*:/, ""); printf "%s", $0; found=1 } END { if(found) printf "\n" }' "$diag_dir/logcat-live.log" | base64 --decode > "$diag_dir/emulator-detail.png" 2> "$diag_dir/screenshot-pull.log" || true

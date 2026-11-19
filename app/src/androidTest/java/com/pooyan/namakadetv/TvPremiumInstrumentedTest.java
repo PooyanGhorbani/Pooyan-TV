@@ -25,7 +25,12 @@ public class TvPremiumInstrumentedTest {
  private void capturePreview(String name)throws Exception{
   InstrumentationRegistry.getInstrumentation().waitForIdleSync();android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull("Screenshot captured from emulator",image);
   java.io.File directory=context().getExternalFilesDir(null);assertNotNull(directory);java.io.File file=new java.io.File(directory,name);
-  try(java.io.FileOutputStream out=new java.io.FileOutputStream(file)){assertTrue("PNG screenshot written",image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}finally{image.recycle();}
+  java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();try{assertTrue("PNG screenshot encoded",image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,bytes));}finally{image.recycle();}
+  byte[] png=bytes.toByteArray();try(java.io.FileOutputStream out=new java.io.FileOutputStream(file)){out.write(png);}
+  String encoded=android.util.Base64.encodeToString(png,android.util.Base64.NO_WRAP);int chunkSize=2800;int chunks=(encoded.length()+chunkSize-1)/chunkSize;
+  android.util.Log.i("UltimatePreview","PNG_BEGIN:"+name+":"+png.length+":"+chunks);
+  for(int i=0;i<chunks;i++){int from=i*chunkSize;android.util.Log.i("UltimatePreview","PNG_CHUNK:"+name+":"+String.format(java.util.Locale.ROOT,"%04d",i)+":"+encoded.substring(from,Math.min(encoded.length(),from+chunkSize)));}
+  android.util.Log.i("UltimatePreview","PNG_END:"+name);
  }
  @Test public void posterOrderDirectionAndSelectAreStable(){
   final LinearLayout[] rows=new LinearLayout[2];AtomicInteger clicks=new AtomicInteger();
@@ -261,7 +266,7 @@ public class TvPremiumInstrumentedTest {
    scenario.onActivity(a->assertEquals("Rail LEFT enters the page content predictably","home-primary",a.getCurrentFocus().getTag()));
    key(KeyEvent.KEYCODE_DPAD_UP);
    scenario.onActivity(a->assertEquals("Home hero UP returns to the selected rail item","nav:خانه",a.getCurrentFocus().getTag()));
-   scenario.onActivity(a->{invoke(a,"chooseProfile",new Class[]{boolean.class},false);String id=new ProfileStore(a).active();View active=((FrameLayout)field(a,"root")).findViewWithTag("profile:"+id);assertNotNull("Active saved profile appears as a card",active);assertTrue("Profile card is remotely focusable",active.isFocusable());});
+   scenario.onActivity(a->{invoke(a,"chooseProfile",new Class[]{boolean.class},false);String id=new ProfileStore(a).active();View active=((FrameLayout)field(a,"root")).findViewWithTag("profile:"+id);assertNotNull("Active saved profile appears as a card",active);assertTrue("Profile card is remotely focusable",active.isFocusable());assertTrue("Active profile receives predictable focus",active.isFocused()||active.requestFocus());});
    key(KeyEvent.KEYCODE_DPAD_CENTER);
    scenario.onActivity(a->assertEquals("Selecting a profile returns to Home without deleting data","home",field(a,"screen")));
   }
