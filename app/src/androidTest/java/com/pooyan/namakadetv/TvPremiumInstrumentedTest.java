@@ -334,6 +334,8 @@ public class TvPremiumInstrumentedTest {
    key(KeyEvent.KEYCODE_DPAD_UP);
    scenario.onActivity(a->assertEquals("Home hero UP returns to the selected rail item","nav:خانه",a.getCurrentFocus().getTag()));
    scenario.onActivity(a->{invoke(a,"chooseProfile",new Class[]{boolean.class},false);String id=new ProfileStore(a).active();View active=((FrameLayout)field(a,"root")).findViewWithTag("profile:"+id);assertNotNull("Active saved profile appears as a card",active);assertTrue("Profile card is remotely focusable",active.isFocusable());assertTrue("Active profile receives predictable focus",active.isFocused()||active.requestFocus());});
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();Thread.sleep(150);
+   scenario.onActivity(a->{String id=new ProfileStore(a).active();View active=((FrameLayout)field(a,"root")).findViewWithTag("profile:"+id);assertNotNull(active);assertTrue("Delayed initial focus settles before remote Select",active.isFocused());});
    key(KeyEvent.KEYCODE_DPAD_CENTER);
    scenario.onActivity(a->assertEquals("Selecting a profile returns to Home without deleting data","home",field(a,"screen")));
   }
