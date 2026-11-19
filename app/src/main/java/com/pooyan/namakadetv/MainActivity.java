@@ -609,6 +609,14 @@ public final class MainActivity extends Activity {
             if(focused!=null&&isInside(focused,content)){
                 View next=android.view.FocusFinder.getInstance().findNextFocus(root,focused,View.FOCUS_RIGHT);
                 if(next!=null&&isInside(next,navigationBar))return focusPoster(next);
+                Object tag=focused.getTag();
+                boolean rightEdge="detail-alternative".equals(tag)
+                        ||("detail-back".equals(tag)&&root.findViewWithTag("detail-alternative")==null);
+                if(rightEdge){
+                    String destination=selected!=null&&"movie".equals(selected.kind)?"فیلم‌ها":
+                            selected!=null&&"series".equals(selected.kind)?"سریال‌ها":"خانه";
+                    return focusNavigation(destination);
+                }
             }
         }
         if(event.getAction()==KeyEvent.ACTION_DOWN && "home".equals(screen)){

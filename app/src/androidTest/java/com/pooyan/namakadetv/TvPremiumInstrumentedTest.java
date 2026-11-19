@@ -144,6 +144,10 @@ public class TvPremiumInstrumentedTest {
    });
    key(KeyEvent.KEYCODE_DPAD_RIGHT);
    scenario.onActivity(a->{
+    assertEquals("Remote RIGHT advances from Back to the adjacent alternative action","detail-alternative",a.getCurrentFocus().getTag());
+   });
+   key(KeyEvent.KEYCODE_DPAD_RIGHT);
+   scenario.onActivity(a->{
     LinearLayout nav=(LinearLayout)field(a,"navigationBar");FrameLayout root=(FrameLayout)field(a,"root");
     assertTrue("Remote RIGHT at the detail boundary enters the side menu",isInside(a.getCurrentFocus(),nav));
     assertEquals("Focused rail expands to show labels",TvUi.dp(a,176),nav.getLayoutParams().width);
