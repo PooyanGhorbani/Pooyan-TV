@@ -128,6 +128,9 @@ public class TvPremiumInstrumentedTest {
    scenario.onActivity(a->{
     set(a,"destroyed",true);FarsiPlexTitle movie=new FarsiPlexTitle("https://farsiplex.com/movie/layout-fit-fixture/","movie","فیلم آزمایشی چیدمان");
     set(a,"selected",movie);invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},movie,true);
+   });
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+   scenario.onActivity(a->{
     FrameLayout root=(FrameLayout)field(a,"root");LinearLayout nav=(LinearLayout)field(a,"navigationBar");
     assertEquals("Movie details start with the compact icon rail",TvUi.dp(a,68),nav.getLayoutParams().width);
     assertEquals("Collapsed rail exposes the icon while retaining its accessible label","⌂",((TextView)nav.findViewWithTag("nav:خانه")).getText().toString());
