@@ -21,7 +21,7 @@ public class TvPremiumInstrumentedTest {
  private Object field(Object owner,String name){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(owner);}catch(Exception e){throw new AssertionError(e);}}
  private void set(Object owner,String name,Object value){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);f.set(owner,value);}catch(Exception e){throw new AssertionError(e);}}
  private Object invoke(Object owner,String name,Class<?>[] types,Object...args){try{Method m=owner.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(owner,args);}catch(Exception e){throw new AssertionError(e);}}
- private boolean isInside(View view,ViewGroup parent){android.view.ViewParent current=view;while(current!=null){if(current==parent)return true;current=current.getParent();}return false;}
+ private boolean isInside(View view,ViewGroup parent){android.view.ViewParent current=view==null?null:view.getParent();while(current!=null){if(current==parent)return true;current=current.getParent();}return false;}
  private void key(int code){InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(code);InstrumentationRegistry.getInstrumentation().waitForIdleSync();}
  private void capturePreview(String name)throws Exception{
   InstrumentationRegistry.getInstrumentation().waitForIdleSync();android.graphics.Bitmap image=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull("Screenshot captured from emulator",image);

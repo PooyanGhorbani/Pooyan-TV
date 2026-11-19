@@ -607,7 +607,7 @@ public final class MainActivity extends Activity {
                 &&event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT){
             View focused=getCurrentFocus();
             if(focused!=null&&isInside(focused,content)){
-                View next=FocusFinder.getInstance().findNextFocus(root,focused,View.FOCUS_RIGHT);
+                View next=android.view.FocusFinder.getInstance().findNextFocus(root,focused,View.FOCUS_RIGHT);
                 if(next!=null&&isInside(next,navigationBar))return focusPoster(next);
             }
         }
@@ -628,7 +628,7 @@ public final class MainActivity extends Activity {
     }
     private boolean isInside(View view,ViewGroup parent){
         if(view==null||parent==null)return false;
-        android.view.ViewParent current=view;
+        android.view.ViewParent current=view.getParent();
         while(current!=null){if(current==parent)return true;current=current.getParent();}
         return false;
     }
