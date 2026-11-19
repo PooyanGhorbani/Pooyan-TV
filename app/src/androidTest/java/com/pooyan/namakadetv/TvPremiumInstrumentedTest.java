@@ -320,7 +320,7 @@ public class TvPremiumInstrumentedTest {
    capturePreview("ultimate-home.png");
   }
  }
- @Test public void ultimateSideNavigationAndProfileSelectionWorkWithRemote(){
+ @Test public void ultimateSideNavigationAndProfileSelectionWorkWithRemote()throws Exception{
   android.content.Intent offline=new android.content.Intent(context(),MainActivity.class).putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offline)){
    scenario.onActivity(a->{
