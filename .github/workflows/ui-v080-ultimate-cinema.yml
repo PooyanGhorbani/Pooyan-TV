@@ -2,7 +2,7 @@ name: Pooyan TV v0.8 Ultimate Cinema (preview checks only)
 
 on:
   push:
-    branches: [ui/v0.8.0-ultimate-cinema]
+    branches: [ui/v0.8.0-ultimate-cinema, ui/v0.8.1-multi-source]
     paths:
       - 'app/**'
       - 'resolver-worker/**'
