@@ -96,6 +96,8 @@ jobs:
           sudo apt-get install -y ffmpeg
           mkdir -p app/src/debug/assets/pooyan-test
           ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=320x180:rate=24 -f lavfi -i sine=frequency=440 -t 8 -c:v libx264 -profile:v baseline -g 48 -c:a aac -hls_time 2 -hls_list_size 0 app/src/debug/assets/pooyan-test/index.m3u8
+      - name: Initialize the runner's ADB key before emulator launch
+        run: adb start-server && test -s "$HOME/.android/adbkey.pub"
       - uses: reactivecircus/android-emulator-runner@v2
         env:
           POOYAN_DIAGNOSTICS_DIR: ${{ runner.temp }}/pooyan-tv-diagnostics
