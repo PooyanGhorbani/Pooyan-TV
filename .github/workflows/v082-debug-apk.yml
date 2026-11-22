@@ -86,6 +86,8 @@ jobs:
         with:
           gradle-version: '8.9'
       - run: sudo chmod 666 /dev/kvm
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Generate synthetic HLS test media
         run: |
           mkdir -p app/src/debug/assets/pooyan-test
