@@ -23,14 +23,14 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         minSdk 23
         targetSdk 35
-        versionCode 47
-        versionName '0.8.2'
+        versionCode 48
+        versionName '0.8.3'
     }
 
     buildTypes {
         debug {
             // Side-by-side preview: never requires uninstalling the user's v0.1 app.
-            applicationIdSuffix '.dev082movieland'
+            applicationIdSuffix '.dev083catalog'
         }
         release {
             // First stable line uses a new, permanent package ID. Existing preview060 remains untouched.

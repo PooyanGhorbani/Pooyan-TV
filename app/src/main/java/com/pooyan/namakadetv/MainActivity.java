@@ -64,7 +64,7 @@ public final class MainActivity extends Activity {
     private SharedPreferences preferences;
     private boolean destroyed;
     private int generation, detailRequest, page=1;
-    private LinearLayout continueSlot,detailControls,navigationBar,recommendSlot,favoriteSlot,movieSlot;
+    private LinearLayout continueSlot,detailControls,navigationBar,recommendSlot,favoriteSlot,movieSlot,recentSlot;
     private boolean navigationExpanded=true;
     private Runnable collapseDetailNavigation;
     private final java.util.concurrent.ExecutorService localIo=java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -75,6 +75,9 @@ public final class MainActivity extends Activity {
     private FarsiPlexTitle parentSeries;
     private final List<FarsiPlexTitle> loadedMovies=new ArrayList<>(), loadedSeries=new ArrayList<>();
     private final Set<String> seen=new HashSet<>();
+    private final java.util.Map<Integer,List<FarsiPlexTitle>> browsePages=new java.util.LinkedHashMap<>();
+    private int browseSortMode=CatalogOrdering.NEWEST,searchSortMode=CatalogOrdering.RELEVANCE;
+    private TextView browseSortButton,searchSortButton;
     private LinearLayout listingContainer;
     private TextView nextPage;
     private boolean fetching, hasMore=true;
@@ -333,12 +336,13 @@ public final class MainActivity extends Activity {
         continueSlot.setVisibility(preferences.getBoolean("home_continue",true)?View.VISIBLE:View.GONE);
         content.addView(button("سورپرایزم کن از کاتالوگ",false,this::surpriseMe),lp(285,48));
         title("فیلم‌های خارجی","آثار آزاد با زبان اصلی · بدون نیاز به افزونه");foreignRail();
-        title("فیلم‌ها","");rail("movie");
+        title("جدیدترین فیلم‌ها","بر اساس سال انتشارِ موجود در کاتالوگ");rail("movie");
         movieSlot=vertical();content.addView(movieSlot,lp(-1,-2));
+        recentSlot=vertical();content.addView(recentSlot,lp(-1,-2));
         favoriteSlot=vertical();content.addView(favoriteSlot,lp(-1,-2));
         recommendSlot=vertical();content.addView(recommendSlot,lp(-1,-2));
         refreshHomeExtras();
-        title("سریال‌ها برای تماشای پشت‌سرهم","");rail("series");
+        title("جدیدترین سریال‌ها","بر اساس سال انتشارِ موجود در کاتالوگ");rail("series");
         content.addView(button("همهٔ فیلم‌ها",false,()->browse("movie")),lp(210,50));
         content.addView(button("تاریخچهٔ تماشا",false,this::historyScreen),lp(230,50));
     }
@@ -360,7 +364,9 @@ public final class MainActivity extends Activity {
     private void refreshFeaturedCarousel(){
         if(!"home".equals(screen)||heroIndicator==null)return;
         String old=featured==null?"":featured.url;
-        List<FarsiPlexTitle> slides=HomeHeroPolicy.select(loadedMovies,loadedSeries);
+        List<FarsiPlexTitle> slides=HomeHeroPolicy.select(
+            CatalogOrdering.order(loadedMovies,CatalogOrdering.NEWEST,null,""),
+            CatalogOrdering.order(loadedSeries,CatalogOrdering.NEWEST,null,""));
         heroSlides.clear();heroSlides.addAll(slides);
         heroIndex=0;
         for(int i=0;i<heroSlides.size();i++)if(heroSlides.get(i).url.equals(old)){heroIndex=i;break;}
@@ -490,7 +496,9 @@ public final class MainActivity extends Activity {
         int token=generation;
         List<FarsiPlexTitle> cache="movie".equals(kind)?loadedMovies:loadedSeries;
         if(!cache.isEmpty()){
-            row.removeAllViews();for(int i=0;i<Math.min(cache.size(),18);i++)card(row,cache.get(i));return;
+            row.removeAllViews();
+            List<FarsiPlexTitle> ranked=CatalogOrdering.order(cache,CatalogOrdering.NEWEST,null,"");
+            for(int i=0;i<Math.min(ranked.size(),18);i++)card(row,ranked.get(i));return;
         }
         if(offlineUiTest)return;
         source.list(kind,1,(list,error)->{
@@ -498,7 +506,9 @@ public final class MainActivity extends Activity {
             row.removeAllViews();
             if(!list.isEmpty()){
                 cache.clear();cache.addAll(list);
-                for(int i=0;i<Math.min(list.size(),18);i++)card(row,list.get(i));
+                CatalogFirstSeen.record(this,list);
+                List<FarsiPlexTitle> ranked=CatalogOrdering.order(list,CatalogOrdering.NEWEST,null,"");
+                for(int i=0;i<Math.min(ranked.size(),18);i++)card(row,ranked.get(i));
                 if("home".equals(screen))refreshFeaturedCarousel();
             }else{
                 row.addView(text("فهرست دریافت نشد. اینترنت، DNS یا محدودیت دسترسی سایت را بررسی کن.",15,MUTED,false),lp(750,85));
@@ -507,13 +517,46 @@ public final class MainActivity extends Activity {
         });
     }
     private void browse(String kind){
-        parentSeries=null;section=kind;page=1;fetching=false;hasMore=true;seen.clear();
+        parentSeries=null;section=kind;page=1;fetching=false;hasMore=true;
+        seen.clear();browsePages.clear();
+        browseSortMode=preferences.getInt("catalog_browse_sort",CatalogOrdering.NEWEST);
         begin("movie".equals(kind)?"movies":"series");
-        title("movie".equals(kind)?"فیلم‌ها":"سریال‌ها","بهترین انتخابت را پیدا کن");
+        title("movie".equals(kind)?"فیلم‌ها":"سریال‌ها","مرتب‌سازی روی عناوین دریافت‌شده اعمال می‌شود.");
+        browseSortButton=button("مرتب‌سازی: "+CatalogOrdering.label(browseSortMode),false,this::chooseBrowseSort);
+        content.addView(browseSortButton,lp(310,49));
         listingContainer=vertical();content.addView(listingContainer,lp(-1,-2));
         nextPage=button("نمایش عنوان‌های بیشتر",true,this::fetchNextPage);
         LinearLayout.LayoutParams np=lp(272,53);np.topMargin=dp(16);content.addView(nextPage,np);
         fetchNextPage();
+    }
+    private void chooseBrowseSort(){
+        String[] choices={CatalogOrdering.label(CatalogOrdering.NEWEST),
+            CatalogOrdering.label(CatalogOrdering.TOP_RATED),
+            CatalogOrdering.label(CatalogOrdering.FIRST_SEEN),
+            CatalogOrdering.label(CatalogOrdering.ORIGINAL)};
+        new AlertDialog.Builder(this).setTitle("مرتب‌سازی عناوین دریافت‌شده")
+            .setItems(choices,(dialog,index)->{
+                browseSortMode=index;
+                preferences.edit().putInt("catalog_browse_sort",index).apply();
+                if(browseSortButton!=null)browseSortButton.setText("مرتب‌سازی: "+CatalogOrdering.label(index));
+                renderBrowsePages();
+            }).setNegativeButton("بازگشت",null).show();
+    }
+    private void renderBrowsePages(){
+        if(listingContainer==null)return;
+        View focused=getCurrentFocus();
+        Object tag=focused==null?null:focused.getTag();
+        seen.clear();
+        List<FarsiPlexTitle> all=new ArrayList<>();
+        for(List<FarsiPlexTitle> list:browsePages.values())for(FarsiPlexTitle item:list){
+            if(item!=null && seen.add(item.url))all.add(item);
+        }
+        List<FarsiPlexTitle> ordered=CatalogOrdering.order(all,browseSortMode,CatalogFirstSeen.snapshot(this),"");
+        listingContainer.removeAllViews();
+        if(ordered.isEmpty())listingContainer.addView(text("در حال دریافت عنوان‌ها…",15,MUTED,false),lp(-1,74));
+        else showGrid(listingContainer,ordered);
+        if(tag instanceof String){View replacement=root.findViewWithTag(tag);
+            if(replacement!=null && replacement!=focused && replacement.isFocusable())replacement.requestFocus();}
     }
     private int columns(){
         float width=getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density;
@@ -526,31 +569,19 @@ public final class MainActivity extends Activity {
         source.list(section,p,(list,error)->{
             if(destroyed||generation!=token)return;
             fetching=false;
-            if(error!=null){
-                if(p>1 && error.contains("HTTP 404")){
+            if(error!=null && list.isEmpty() && p>1){
+                if(error.contains("HTTP 404")){
                     hasMore=false;nextPage.setText("پایان فهرست");return;
                 }
                 nextPage.setText("خطای شبکه؛ دوباره تلاش کن");info(error);return;
             }
-            int added=0;int perRow=columns();LinearLayout row=null,firstRow=null;
-            for(FarsiPlexTitle item:list){
-                if(!seen.add(item.url))continue;
-                if(added%perRow==0){
-                    row=horizontal();row.setGravity(Gravity.TOP);
-                    LinearLayout.LayoutParams rp=lp(-1,316);rp.bottomMargin=dp(13);
-                    listingContainer.addView(row,rp);
-                    if(firstRow==null)firstRow=row;
-                }
-                card(row,item);added++;
-            }
-            page=p+1;hasMore=!list.isEmpty()&&page<=10;
+            CatalogFirstSeen.record(this,list);
+            browsePages.put(p,new ArrayList<>(list));
+            renderBrowsePages();
+            page=Math.max(page,p+1);
+            hasMore=!list.isEmpty()&&page<=10;
             nextPage.setText(hasMore?"نمایش عنوان‌های بیشتر":"پایان فهرست");
-            // Newly loaded posters are immediately navigable using the remote.
-            if(firstRow!=null&&firstRow.getChildCount()>0){
-                final View first=firstRow.getChildAt(0);
-                if(p==1 || nextPage.isFocused())first.post(first::requestFocus);
-            }
-            info(seen.size()+" عنوان برای تماشا پیدا شد");
+            info(seen.size()+" عنوان در کاتالوگ دریافت شد");
         });
     }
     private void card(LinearLayout row,FarsiPlexTitle item){
@@ -1048,6 +1079,7 @@ public final class MainActivity extends Activity {
     }
     private void search(String query){
         searchTerm=query==null?"":query.trim();if(searchTerm.isEmpty())return;
+        searchSortMode=CatalogOrdering.RELEVANCE;
         if(searchTerm.length()>100)searchTerm=searchTerm.substring(0,100);
         rememberSearch(searchTerm);
         filterKind="";filterGenre="";filterYear=0;filterRating=0;searchRaw.clear();
@@ -1064,6 +1096,8 @@ public final class MainActivity extends Activity {
         searchActions.addView(button("فیلترها",false,this::searchFilters),lp(135,50));gap(searchActions,8);
         searchActions.addView(button("سابقه",false,this::searchHistory),lp(110,50));
         content.addView(searchActions,lp(-1,58));
+        searchSortButton=button("مرتب‌سازی: "+CatalogOrdering.label(searchSortMode),false,this::chooseSearchSort);
+        content.addView(searchSortButton,lp(310,48));
         LinearLayout results=vertical();searchResultsView=results;content.addView(results,lp(-1,-2));
         results.addView(text("در حال جست‌وجو…",15,MUTED,false),lp(-1,75));
         if(offlineUiTest){searchRaw.clear();renderFilteredSearch(null);return;}
@@ -1072,6 +1106,7 @@ public final class MainActivity extends Activity {
             if(destroyed||generation!=token)return;
             Object focus=getCurrentFocus()==null?null:getCurrentFocus().getTag();
             searchRaw.clear();searchRaw.addAll(items);
+            CatalogFirstSeen.record(this,items);
             renderFilteredSearch(error);
             if(focus!=null){View restored=root.findViewWithTag(focus);if(restored!=null)focusPoster(restored);}
             info(items.size()+" نتیجه پیدا شد");
@@ -1082,10 +1117,23 @@ public final class MainActivity extends Activity {
         searchResultsView.removeAllViews();
         List<FarsiPlexTitle> filtered=DiscoveryPolicy.filter(searchRaw,
             new DiscoveryPolicy.Filter(filterKind,filterGenre,filterYear,filterRating));
+        filtered=CatalogOrdering.order(filtered,searchSortMode,CatalogFirstSeen.snapshot(this),searchTerm);
         if(filtered.isEmpty()){TextView empty=text(error!=null?error:
             "با این فیلتر عنوانی پیدا نشد. فیلترها را پاک کن یا جست‌وجو را تغییر بده.",15,MUTED,false);empty.setTag("search-empty");searchResultsView.addView(empty,lp(-1,85));}
         else{searchResultsView.addView(text(filtered.size()+" عنوان از "+searchRaw.size()+" نتیجه",14,MUTED,false),lp(-1,37));
             showGrid(searchResultsView,filtered);}
+    }
+    private void chooseSearchSort(){
+        final int[] modes={CatalogOrdering.RELEVANCE,CatalogOrdering.NEWEST,
+            CatalogOrdering.TOP_RATED,CatalogOrdering.FIRST_SEEN,CatalogOrdering.ORIGINAL};
+        String[] choices=new String[modes.length];
+        for(int i=0;i<modes.length;i++)choices[i]=CatalogOrdering.label(modes[i]);
+        new AlertDialog.Builder(this).setTitle("مرتب‌سازی نتایج جست‌وجو")
+            .setItems(choices,(dialog,index)->{
+                searchSortMode=modes[index];
+                if(searchSortButton!=null)searchSortButton.setText("مرتب‌سازی: "+CatalogOrdering.label(searchSortMode));
+                renderFilteredSearch(null);
+            }).setNegativeButton("بازگشت",null).show();
     }
     private void searchFilters(){
         if(!"search".equals(screen))return;
@@ -1215,12 +1263,23 @@ public final class MainActivity extends Activity {
         if(!"home".equals(screen)||favoriteSlot==null||recommendSlot==null)return;
         refreshFeaturedCarousel();
         Object focus=getCurrentFocus()==null?null:getCurrentFocus().getTag();
-        List<FarsiPlexTitle> favorites=favoriteItems(),catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
-        if(movieSlot!=null){homeRow(movieSlot,"فیلم‌ها","انتخاب‌های کاتالوگ موجود",loadedMovies);
-            movieSlot.setVisibility(preferences.getBoolean("home_movies",true)?View.VISIBLE:View.GONE);}
+        List<FarsiPlexTitle> favorites=favoriteItems(),catalog=new ArrayList<>(loadedMovies);
+        catalog.addAll(loadedSeries);
+        if(movieSlot!=null){
+            List<FarsiPlexTitle> rated=CatalogOrdering.topRated(catalog);
+            homeRow(movieSlot,"برترین آثار","فقط بر اساس امتیاز ثبت‌شده در کاتالوگ",rated);
+            movieSlot.setVisibility(preferences.getBoolean("home_movies",true)&&!rated.isEmpty()?View.VISIBLE:View.GONE);
+        }
+        if(recentSlot!=null){
+            homeRow(recentSlot,"تازه شناسایی‌شده‌ها","اولین مشاهده روی همین دستگاه؛ نه تاریخ افزودن به سایت",
+                CatalogOrdering.order(catalog,CatalogOrdering.FIRST_SEEN,CatalogFirstSeen.snapshot(this),""));
+            recentSlot.setVisibility(preferences.getBoolean("home_recent_added",true)&&!catalog.isEmpty()?View.VISIBLE:View.GONE);
+        }
         homeRow(favoriteSlot,"لیست من","ذخیره‌شده برای همین پروفایل",favorites);
         favoriteSlot.setVisibility(preferences.getBoolean("home_favorites",true)?View.VISIBLE:View.GONE);
-        homeRow(recommendSlot,"پیشنهاد برای شما","بر اساس ژانر لیست من و تماشای اخیر؛ فقط روی این دستگاه",Recommendations.rank(catalog,favorites,new LibraryStore(this).watched()));
+        homeRow(recommendSlot,"پیشنهاد برای شما","بر اساس ژانر لیست من و تماشای اخیر؛ فقط روی این دستگاه",
+            Recommendations.rank(CatalogOrdering.order(catalog,CatalogOrdering.NEWEST,null,""),
+                favorites,new LibraryStore(this).watched()));
         recommendSlot.setVisibility(preferences.getBoolean("home_recommendations",true)?View.VISIBLE:View.GONE);
         if(focus!=null){View v=root.findViewWithTag(focus);if(v!=null)v.requestFocus();}
     }
@@ -1303,8 +1362,8 @@ public final class MainActivity extends Activity {
             }).show();
     }
     private void customizeHome(){
-        final String[] keys={"home_continue","home_movies","home_favorites","home_recommendations"};
-        final String[] labels={"ادامهٔ تماشا","فهرست فیلم‌ها","علاقه‌مندی‌ها","پیشنهاد برای شما"};
+        final String[] keys={"home_continue","home_movies","home_recent_added","home_favorites","home_recommendations"};
+        final String[] labels={"ادامهٔ تماشا","برترین آثار","تازه شناسایی‌شده‌ها","علاقه‌مندی‌ها","پیشنهاد برای شما"};
         String[] options=new String[keys.length];
         for(int i=0;i<keys.length;i++)options[i]=labels[i]+": "+(preferences.getBoolean(keys[i],true)?"نمایش":"مخفی");
         new AlertDialog.Builder(this).setTitle("شخصی‌سازی صفحهٔ خانه")
