@@ -202,8 +202,15 @@ public class TvPremiumInstrumentedTest {
     FarsiPlexTitle one=new FarsiPlexTitle(ep1,"episode","قسمت یک");one.season=1;FarsiPlexTitle two=new FarsiPlexTitle(ep2,"episode","قسمت دو");two.season=1;FarsiPlexTitle three=new FarsiPlexTitle(ep3,"episode","قسمت یک فصل دو");three.season=2;
     series.episodes.add(one);series.episodes.add(two);series.episodes.add(three);set(a,"selected",series);invoke(a,"showDetail",new Class[]{FarsiPlexTitle.class,boolean.class},series,true);
     FrameLayout root=(FrameLayout)field(a,"root");assertNotNull(root.findViewWithTag("detail-season-1"));assertNotNull(root.findViewWithTag(ep1));assertNotNull(root.findViewWithTag(ep2));assertNull(root.findViewWithTag(ep3));
-    assertTrue(root.findViewWithTag("detail-season-1").requestFocus());
    });
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+   scenario.onActivity(a->{
+    FrameLayout root=(FrameLayout)field(a,"root");
+    View season=root.findViewWithTag("detail-season-1");
+    assertTrue("Season and first episode have completed layout",season.isLaidOut()&&root.findViewWithTag(ep1).isLaidOut());
+    assertTrue(season.requestFocus());
+   });
+   InstrumentationRegistry.getInstrumentation().waitForIdleSync();
    key(KeyEvent.KEYCODE_DPAD_DOWN);
    scenario.onActivity(a->{assertEquals("Season DOWN reaches the first episode",ep1,a.getCurrentFocus().getTag());});
    key(KeyEvent.KEYCODE_DPAD_RIGHT);

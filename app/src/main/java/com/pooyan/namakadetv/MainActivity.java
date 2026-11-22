@@ -653,7 +653,7 @@ public final class MainActivity extends Activity {
         android.view.ViewParent parent=target.getParent();
         while(parent!=null){
             if(parent instanceof ScrollView||parent instanceof HorizontalScrollView){
-                target.requestRectangleOnScreen(new android.graphics.Rect(0,0,target.getWidth(),target.getHeight()),false);
+                target.requestRectangleOnScreen(new android.graphics.Rect(0,0,target.getWidth(),target.getHeight()),"detail".equals(screen));
                 break;
             }
             parent=parent.getParent();
