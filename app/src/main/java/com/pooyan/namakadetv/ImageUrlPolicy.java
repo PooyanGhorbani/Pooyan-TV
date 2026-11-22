@@ -11,6 +11,7 @@ public final class ImageUrlPolicy {
             if(!"https".equalsIgnoreCase(u.getScheme())||u.getPort()!=-1||u.getUserInfo()!=null||u.getFragment()!=null)return false;
             String host=u.getHost();if(host==null)return false;
             host=host.toLowerCase(Locale.ROOT);
+            if(MovielandCatalog.posterAllowed(u))return true;
             if(!host.equals("farsiplex.com")&&!host.equals("www.farsiplex.com")
                 &&!host.equals("namakadeh.com")&&!host.equals("namakade.com")
                 &&!host.equals("media.negahestan.com")

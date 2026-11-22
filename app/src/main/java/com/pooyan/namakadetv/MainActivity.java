@@ -800,7 +800,7 @@ public final class MainActivity extends Activity {
         String url=custom!=null?custom:item.publicStream;
         String primaryLabel=url!=null&&!url.isEmpty()?(resume!=null?"▶  ادامهٔ تماشا":"▶  پخش"):
             ("series".equals(item.kind)?"انتخاب قسمت":"+  افزودن لینک مجاز");
-        boolean showAlternative=(url==null||url.isEmpty())&&NamakadeCatalog.safeUrl(item.url).isEmpty();
+        boolean showAlternative=(url==null||url.isEmpty())&&NamakadeCatalog.safeUrl(item.url).isEmpty()&&MovielandCatalog.kind(item.url).isEmpty();
         LinearLayout primaryRow=horizontal();primaryRow.setTag("detail-action-primary-row");controls.addView(primaryRow,lp(-1,48));
         TextView primaryAction=button(primaryLabel,true,()->{
             if("series".equals(item.kind)){
@@ -849,7 +849,9 @@ public final class MainActivity extends Activity {
             List<LibraryStore.Entry> episodesWatched=library.watched();
             List<LibraryStore.Entry> episodesResume=library.resumeList();
             if(complete&&item.episodes.isEmpty())content.addView(text("فهرست قسمت‌ها در صفحهٔ عمومی دریافت نشد.",15,MUTED,false),lp(-1,50));
-            List<Integer> seasons=DetailSeasonPolicy.seasons(item.episodes);
+            List<Integer> seasons=new ArrayList<>(DetailSeasonPolicy.seasons(item.episodes));
+            for(int season:item.availableSeasons)if(!seasons.contains(season))seasons.add(season);
+            java.util.Collections.sort(seasons);
             if(!seasons.isEmpty()){
                 if(selectedDetailSeason==Integer.MIN_VALUE||!seasons.contains(selectedDetailSeason))selectedDetailSeason=seasons.get(0);
                 LinearLayout seasonRow=horizontal();seasonRow.setTag("detail-season-row");
@@ -1164,6 +1166,10 @@ public final class MainActivity extends Activity {
                         kind=FarsiPlexUrlPolicy.mediaType(url);}
                 }else if(kind.isEmpty())kind=url.contains("/movies/")?"movie":"series";
                 if(url.isEmpty()) {url=ArchiveMoviesRepository.safePage(raw);if(!url.isEmpty())kind="movie";}
+                if(url.isEmpty() && source.experimentalCatalogEnabled()){
+                    kind=MovielandCatalog.kind(raw);
+                    if(!kind.isEmpty())url=MovielandCatalog.BASE+MovielandCatalog.path(raw);
+                }
                 if(url.isEmpty()||kind.isEmpty())continue;
                 FarsiPlexTitle item=new FarsiPlexTitle(url,kind,j.optString("title"));
                 String poster=j.optString("poster","");
@@ -1328,6 +1334,10 @@ public final class MainActivity extends Activity {
     private void settingsUnlocked(){
         SharedPreferences playerPrefs=ProfileStore.data(this,"player_preferences");ProfileStore profiles=new ProfileStore(this);
         String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی","نگهداری، آپدیت GitHub و پشتیبان خانوادگی","شخصی‌سازی صفحهٔ خانه","قفل PIN تنظیمات","افزودن منابع بین‌المللی (Stremio)"};
+        if(BuildConfig.DEBUG){
+            options=java.util.Arrays.copyOf(options,options.length+1);
+            options[options.length-1]="کاتالوگ آزمایشی: "+(source.experimentalCatalogEnabled()?"روشن":"خاموش");
+        }
         new AlertDialog.Builder(this).setTitle("تنظیمات محلی").setItems(options,(d,n)->{switch(n){
             case 0:chooseProfile(true);break;case 1:profiles.picker(!profiles.picker());settingsUnlocked();break;case 2:historyScreen();break;
             case 3:playerPrefs.edit().putBoolean("autoplay",!playerPrefs.getBoolean("autoplay",true)).apply();settingsUnlocked();break;
@@ -1336,6 +1346,7 @@ public final class MainActivity extends Activity {
             case 6:new AlertDialog.Builder(this).setTitle("زبان سرویس گفتار").setItems(new String[]{"فارسی","English"},(a,i)->playerPrefs.edit().putString("voice",i==0?"fa-IR":"en-US").apply()).show();break;
             case 7:transfer(false);break;case 8:transfer(true);break;case 9:configureAI(null);break;case 10:startActivity(new Intent(this,MaintenanceActivity.class));break;
             case 11:customizeHome();break;case 12:pinSettings();break;case 13:configureStremioAddon();break;
+            case 14:source.setExperimentalCatalogEnabled(!source.experimentalCatalogEnabled());home();break;
         }}).setNegativeButton("بازگشت",null).show();
     }
     private void historyScreen(){

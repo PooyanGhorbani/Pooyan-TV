@@ -30,7 +30,7 @@ android {
     buildTypes {
         debug {
             // Side-by-side preview: never requires uninstalling the user's v0.1 app.
-            applicationIdSuffix '.dev082'
+            applicationIdSuffix '.dev082movieland'
         }
         release {
             // First stable line uses a new, permanent package ID. Existing preview060 remains untouched.
