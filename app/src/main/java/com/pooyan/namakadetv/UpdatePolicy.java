@@ -9,7 +9,7 @@ public final class UpdatePolicy {
     private UpdatePolicy() {}
     public static final String OWNER = "PooyanGhorbani";
     public static final String REPO = "Pooyan-TV";
-    public static final String RELEASES_API = "https://api.github.com/repos/PooyanGhorbani/Pooyan-TV/releases?per_page=15";
+    public static final String RELEASES_API = "https://api.github.com/repos/PooyanGhorbani/Pooyan-TV/releases?per_page=40";
     public static final int MAX_APK_BYTES = 180 * 1024 * 1024;
     private static final Pattern TAG = Pattern.compile("v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)");
     private static final Pattern APK = Pattern.compile("Pooyan-TV-v[0-9]+\\.[0-9]+\\.[0-9]+-[A-Za-z0-9._-]+\\.apk");

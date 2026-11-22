@@ -33,6 +33,27 @@ public class TvPremiumInstrumentedTest {
   for(int i=0;i<chunks;i++){int from=i*chunkSize;android.util.Log.i("UltimatePreview","PNG_CHUNK:"+name+":"+String.format(java.util.Locale.ROOT,"%04d",i)+":"+encoded.substring(from,Math.min(encoded.length(),from+chunkSize)));}
   android.util.Log.i("UltimatePreview","PNG_END:"+name);
  }
+ @Test public void rightEdgeAndMenuReturnWorkOnAllCatalogScreens(){
+  android.content.Intent offline=new android.content.Intent(context(),MainActivity.class).putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offline)){
+   for(String screen:new String[]{"home","movies","series","search"}){
+    View[] last={null};
+    scenario.onActivity(a->{
+     invoke(a,"begin",new Class[]{String.class},screen);
+     LinearLayout content=(LinearLayout)field(a,"content");
+     LinearLayout row=new LinearLayout(a);content.addView(row);
+     invoke(a,"card",new Class[]{LinearLayout.class,FarsiPlexTitle.class},row,
+         new FarsiPlexTitle("https://farsiplex.com/movie/edge-fixture/","movie","Edge fixture"));
+     last[0]=row.getChildAt(0);
+     assertTrue(last[0].requestFocus());
+    });
+    key(KeyEvent.KEYCODE_DPAD_RIGHT);
+    scenario.onActivity(a->assertSame(screen+" RIGHT reaches the menu",field(a,"navigationBar"),a.getCurrentFocus().getParent()));
+    key(KeyEvent.KEYCODE_DPAD_LEFT);
+    scenario.onActivity(a->assertSame(screen+" LEFT restores the poster",last[0],a.getCurrentFocus()));
+   }
+  }
+ }
  @Test public void posterOrderDirectionAndSelectAreStable(){
   final LinearLayout[] rows=new LinearLayout[2];AtomicInteger clicks=new AtomicInteger();
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
@@ -259,13 +280,12 @@ public class TvPremiumInstrumentedTest {
        .putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
    try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offlineUi)){
     scenario.onActivity(a->{
-     set(a,"destroyed",true); // Prevent network callbacks and timer rotation during this fixture.
      LinearLayout content=(LinearLayout)field(a,"content");
      assertTrue("Home keeps hero and Continue Watching rows",content.getChildCount()>1);
      if(content.getChildCount()>2)content.removeViews(2,content.getChildCount()-2);
      View hero=content.getChildAt(0);
      assertTrue("Hero is visible",hero.getVisibility()==View.VISIBLE);
-     assertTrue("Hero height stays in the tested design range",hero.getLayoutParams().height>=340*hero.getResources().getDisplayMetrics().density);
+     assertTrue("Hero uses the responsive 300–380dp range",hero.getLayoutParams().height>=TvUi.dp(a,300) && hero.getLayoutParams().height<=TvUi.dp(a,380));
      TextView description=(TextView)field(a,"featuredDescription");
      assertEquals("Persian copy uses first-strong RTL-aware direction",View.TEXT_DIRECTION_FIRST_STRONG,description.getTextDirection());
      assertTrue("Persian home copy is present",containsPersian(description.getText().toString()));
@@ -295,7 +315,7 @@ public class TvPremiumInstrumentedTest {
     android.util.Log.i("Phase1FocusTest","second UP completed");
     scenario.onActivity(a->assertSame("UP reaches Continue Watching",a.getCurrentFocus(),((FrameLayout)field(a,"root")).findViewWithTag("resume:"+PlaybackResumePolicy.identity("",continuePage))));
     key(KeyEvent.KEYCODE_DPAD_UP);
-    scenario.onActivity(a->assertEquals("home-primary",a.getCurrentFocus().getTag()));
+    scenario.onActivity(a->{assertEquals("home-primary",a.getCurrentFocus().getTag());assertEquals("Hero is fully revealed at the top",0,((android.widget.ScrollView)field(a,"homeScroll")).getScrollY());});
     key(KeyEvent.KEYCODE_DPAD_LEFT);
     android.util.Log.i("Phase1FocusTest","LEFT carousel selection completed");
     scenario.onActivity(a->assertEquals("Fixture B",((FarsiPlexTitle)field(a,"featured")).name));

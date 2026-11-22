@@ -22,7 +22,7 @@ public final class MaintenanceActivity extends Activity {
         ScrollView scroll=new ScrollView(this);LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(28,25,28,25);l.setBackgroundColor(0xff0B0D14);scroll.addView(l);setContentView(scroll);
         TextView title=new TextView(this);title.setText("POOYAN TV · مرکز تنظیمات v"+BuildConfig.VERSION_NAME);title.setTextSize(24);title.setTextColor(-1);l.addView(title);
         status=new TextView(this);status.setTextColor(0xffdddddd);status.setTextSize(16);status.setPadding(0,15,0,14);status.setText(SourceRules.summary(this));l.addView(status);
-        add(l,"آپدیت نرم‌افزار از GitHub",()->startActivity(new Intent(this,UpdaterActivity.class)));
+        add(l,"مدیریت آپدیت: GitHub / نصب APK سازگار",()->startActivity(new Intent(this,UpdaterActivity.class)));
         add(l,"آپدیت قواعد منابع (بدون نصب APK)",()->{info("در حال بررسی تنظیمات عمومی منابع…");SourceRules.refresh(this,this::info);});
         add(l,"پشتیبان‌گیری / بازیابی خانواده",()->startActivity(new Intent(this,BackupActivity.class)));
         add(l,"بررسی سلامت ارتباط با منابع",this::checkSources);
