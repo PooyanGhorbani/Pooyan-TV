@@ -9,19 +9,24 @@ import android.view.View;
 import android.widget.TextView;
 
 public final class TvUi {
-    public static final int BG = Color.rgb(9, 13, 22);
-    public static final int BLUE = Color.rgb(72, 145, 252);
+    public static final int BG = 0xFF0B0D14;
+    public static final int BLUE = 0xFF5B8CFF;
     public static final int TEXT = Color.WHITE;
-    public static final int MUTED = Color.rgb(169, 182, 206);
+    public static final int MUTED = 0xFF9AA4BA;
     /** Visual-only design tokens shared by Home, Details and Player. */
-    public static final int SURFACE = 0xFF16161C;
-    public static final int SURFACE_RAISED = 0xFF22222B;
-    public static final int ACCENT = 0xFFE50914;
-    public static final int ACCENT_SOFT = 0xFF4A1820;
+    public static final int SURFACE = 0xFF141824;
+    public static final int SURFACE_RAISED = 0xFF1E2433;
+    public static final int ACCENT = 0xFF7C5CFF;
+    public static final int ACCENT_SOFT = 0xFF2A2250;
     public static final int FOCUS_RING = 0xFFFFFFFF;
-    public static final int SCRIM = 0xCC08080B;
+    public static final int SCRIM = 0xCC0B0D14;
+    public static final int ACCENT_LIGHT = 0xFFB9A8FF;
+    public static final int BORDER = 0xFF2A3248;
+    public static final int AMBER = 0xFFFFC857;
+    public static final int SUCCESS = 0xFF7EE0B0;
+    public static final int DANGER = 0xFFFF6B7A;
     public static final int RADIUS_PILL = 100;
-    public static final int RADIUS_CARD = 14;
+    public static final int RADIUS_CARD = 16;
     private TvUi() {}
     private static final java.util.Map<View,RemoteInputPolicy> selectStates=new java.util.WeakHashMap<>();
 
@@ -82,7 +87,7 @@ public final class TvUi {
         v.setGravity(Gravity.CENTER);
         int hp = dp(c, 20), vp = dp(c, 10);
         v.setPadding(hp, vp, hp, vp);
-        int normal = primary ? ACCENT : 0xB322222B;
+        int normal = primary ? ACCENT : 0xB31E2433;
         v.setBackground(ring(normal, RADIUS_PILL, false, c));
         v.setFocusable(true);
         v.setClickable(true);

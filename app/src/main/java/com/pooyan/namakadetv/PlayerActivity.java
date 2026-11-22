@@ -168,7 +168,7 @@ public final class PlayerActivity extends Activity {
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.VERTICAL);
         head.setPadding(dp(28), dp(18), dp(28), dp(12));
-        head.setBackground(TvUi.bg(0xCC101016, 18, this));
+        head.setBackground(TvUi.bg(0xCC0F1320, 18, this));
         topPanel = head;
         titleView = TvUi.text(this, name, 19, TvUi.TEXT, true);
         titleView.setSingleLine(true);
@@ -183,7 +183,7 @@ public final class PlayerActivity extends Activity {
         controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.HORIZONTAL);
         controls.setPadding(dp(16), dp(10), dp(16), dp(10));
-        controls.setBackground(TvUi.bg(0xD910141D, 24, this));
+        controls.setBackground(TvUi.bg(0xD90F1320, 24, this));
         HorizontalScrollView scroller = new HorizontalScrollView(this);
         scroller.setHorizontalScrollBarEnabled(false);
         scroller.setFillViewport(true);
@@ -193,12 +193,12 @@ public final class PlayerActivity extends Activity {
         timelinePanel=new LinearLayout(this);timelinePanel.setOrientation(LinearLayout.VERTICAL);
         timelinePanel.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         timelinePanel.setPadding(dp(18),dp(12),dp(18),dp(10));
-        timelinePanel.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xAA080B12,0xF510141D}));
+        timelinePanel.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xAA0B0D14,0xF50F1320}));
         timelineText=TvUi.text(this,"00:00 / --:--    باقی‌مانده: --:--",14,Color.WHITE,false);
         timelineText.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);timelinePanel.addView(timelineText);
         seekBar=new SeekBar(this);seekBar.setMax(10000);seekBar.setKeyProgressIncrement(100);
-        seekBar.setProgressTintList(ColorStateList.valueOf(0xFFE50914));seekBar.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
-        seekBar.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF55555C));
+        seekBar.setProgressTintList(ColorStateList.valueOf(0xFF7C5CFF));seekBar.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
+        seekBar.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF3A4258));
         seekBar.setContentDescription("زمان پخش؛ چپ و راست برای جابه‌جایی ده ثانیه");
         timelinePanel.addView(seekBar,new LinearLayout.LayoutParams(-1,dp(42)));
         seekBar.setOnKeyListener((v,k,e)->{

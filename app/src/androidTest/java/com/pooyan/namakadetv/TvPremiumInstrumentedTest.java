@@ -133,7 +133,7 @@ public class TvPremiumInstrumentedTest {
    scenario.onActivity(a->{
     FrameLayout root=(FrameLayout)field(a,"root");LinearLayout nav=(LinearLayout)field(a,"navigationBar");
     assertEquals("Movie details start with the compact icon rail",TvUi.dp(a,68),nav.getLayoutParams().width);
-    assertEquals("Collapsed rail exposes the icon while retaining its accessible label","⌂",((TextView)nav.findViewWithTag("nav:خانه")).getText().toString());
+    TextView homeItem=(TextView)nav.findViewWithTag("nav:خانه");assertEquals("Collapsed rail hides the text but keeps the accessible label","خانه",String.valueOf(homeItem.getContentDescription()));assertEquals("Collapsed rail shows only the icon","",homeItem.getText().toString());assertNotNull("Collapsed rail keeps its vector icon",homeItem.getCompoundDrawablesRelative()[0]);
     assertEquals("Movie action is the initial focus", "detail-primary",a.getCurrentFocus().getTag());
     for(String tag:new String[]{"detail-primary","detail-favorite","detail-back","detail-alternative"}){
      View action=root.findViewWithTag(tag);assertNotNull("Action is present: "+tag,action);assertTrue("Action has measured width: "+tag,action.getWidth()>0);

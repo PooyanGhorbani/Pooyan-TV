@@ -3,7 +3,7 @@ name: Pooyan TV v0.8.2 Debug APK
 on:
   push:
     branches:
-      - ui/v0.8.1-multi-source
+      - ui/v082-redesign-artifact
   workflow_dispatch:
 
 permissions:

@@ -22,7 +22,7 @@ public final class BackupActivity extends Activity {
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private TextView status;
     @Override public void onCreate(Bundle saved){super.onCreate(saved);
-        LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(28,28,28,20);layout.setBackgroundColor(0xff0c0c10);
+        LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(28,28,28,20);layout.setBackgroundColor(0xff0B0D14);
         TextView title=new TextView(this);title.setText("Pooyan TV · پشتیبان‌گیری خانوادگی");title.setTextColor(-1);title.setTextSize(24);layout.addView(title);
         status=new TextView(this);status.setText("پروفایل‌ها، علاقه‌مندی‌ها، پیشرفت تماشا و تنظیمات مجاز ذخیره می‌شوند. کلیدها، توکن‌ها و لینک‌های ویدئویی ذخیره نمی‌شوند.");status.setTextSize(16);status.setTextColor(0xffdddddd);layout.addView(status);
         add(layout,"ذخیرهٔ پشتیبان همهٔ پروفایل‌ها",()->pick(false));

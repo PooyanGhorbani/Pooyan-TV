@@ -42,7 +42,7 @@ public final class UpdaterActivity extends Activity {
         String tag,url,sha,name,notes;int versionCode;
     }
     @Override public void onCreate(Bundle saved){super.onCreate(saved);
-        LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(32,28,32,28);layout.setBackgroundColor(0xff0c0c10);
+        LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(32,28,32,28);layout.setBackgroundColor(0xff0B0D14);
         TextView heading=new TextView(this);heading.setText("POOYAN TV  ·  آپدیت نرم‌افزار");heading.setTextColor(-1);heading.setTextSize(24);layout.addView(heading);
         TextView version=new TextView(this);version.setText("نسخهٔ فعلی: "+BuildConfig.VERSION_NAME+"  ·  "+getPackageName());version.setTextColor(0xffdddddd);version.setPadding(0,14,0,15);layout.addView(version);
         status=new TextView(this);status.setTextColor(-1);status.setTextSize(17);status.setText("فقط نسخه‌های منتشرشده در GitHub رسمی پروژه بررسی می‌شوند. نصب با تأیید خودت انجام می‌شود.");status.setPadding(0,12,0,22);layout.addView(status);
