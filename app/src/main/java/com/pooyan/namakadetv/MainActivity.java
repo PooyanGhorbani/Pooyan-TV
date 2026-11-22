@@ -778,7 +778,8 @@ public final class MainActivity extends Activity {
             returnView=root.getChildAt(0);returnFocus=getCurrentFocus();
             returnContent=content;returnNavigation=navigationBar;returnStatus=status;returnScreen=screen;
         }
-        selected=item;showDetail(item,false);
+        selected=item;showDetail(item,offlineUiTest);
+        if(offlineUiTest)return;
         int token=generation;
         source.detail(item,(full,error)->{
             if(destroyed||!"detail".equals(screen)||selected==null||!selected.url.equals(item.url)||request!=detailRequest)return;
@@ -1003,7 +1004,10 @@ public final class MainActivity extends Activity {
         if(returnView!=null){
             generation++;root.removeAllViews();root.addView(returnView);
             screen=returnScreen;content=returnContent;navigationBar=returnNavigation;status=returnStatus;
-            if("home".equals(screen)){addContinueWatching();refreshFeaturedCarousel();}
+            if("home".equals(screen)){
+                if(content.getParent() instanceof ScrollView)homeScroll=(ScrollView)content.getParent();
+                addContinueWatching();refreshFeaturedCarousel();
+            }
             View target=returnFocus;returnView=null;
             if(target!=null){
                 View restored=target.getTag()==null?target:root.findViewWithTag(target.getTag());

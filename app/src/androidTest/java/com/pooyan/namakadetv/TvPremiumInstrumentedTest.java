@@ -51,6 +51,11 @@ public class TvPremiumInstrumentedTest {
     scenario.onActivity(a->assertSame(screen+" RIGHT reaches the menu",field(a,"navigationBar"),a.getCurrentFocus().getParent()));
     key(KeyEvent.KEYCODE_DPAD_LEFT);
     scenario.onActivity(a->assertSame(screen+" LEFT restores the poster",last[0],a.getCurrentFocus()));
+    key(KeyEvent.KEYCODE_DPAD_CENTER);
+    scenario.onActivity(a->assertEquals("OK opens details","detail",field(a,"screen")));
+    key(KeyEvent.KEYCODE_BACK);
+    scenario.onActivity(a->assertSame(screen+" Back restores the selected poster",last[0],a.getCurrentFocus()));
+
    }
   }
  }
