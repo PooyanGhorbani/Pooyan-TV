@@ -1294,11 +1294,11 @@ public final class MainActivity extends Activity {
             fingerprint.append('|').append(item.url).append('|').append(item.name).append('|').append(item.poster);
         }
         String signature=fingerprint.toString();
-        if(signature.equals(slot.getTag()))return;
+        if(signature.equals(renderedRailKeys.get(slot)))return;
         View focused=getCurrentFocus();
         String focusedUrl=focused!=null&&isInside(focused,slot)&&focused.getTag() instanceof String
                 ?(String)focused.getTag():null;
-        slot.removeAllViews();slot.setTag(signature);
+        slot.removeAllViews();renderedRailKeys.put(slot,signature);
         TextView name=text(heading,23,WHITE,true);name.setPadding(0,dp(15),0,dp(5));slot.addView(name,lp(-1,55));
         if(!note.isEmpty())slot.addView(text(note,12,MUTED,false),lp(-1,30));
         if(titles.isEmpty()){
@@ -1328,7 +1328,7 @@ public final class MainActivity extends Activity {
                 CatalogOrdering.order(catalog,CatalogOrdering.FIRST_SEEN,CatalogFirstSeen.snapshot(this),""));
             recentSlot.setVisibility(preferences.getBoolean("home_recent_added",true)&&!catalog.isEmpty()?View.VISIBLE:View.GONE);
         }
-        homeRow(favoriteSlot,"لیست من","ذخیره‌شده برای همین پروفایل",favorites);
+        homeRow(favoriteSlot,"فهرست من","ذخیره‌شده برای همین پروفایل",favorites);
         favoriteSlot.setVisibility(preferences.getBoolean("home_favorites",true)?View.VISIBLE:View.GONE);
         homeRow(recommendSlot,"پیشنهاد برای شما","بر اساس ژانر لیست من و تماشای اخیر؛ فقط روی این دستگاه",
             Recommendations.rank(CatalogOrdering.order(catalog,CatalogOrdering.NEWEST,null,""),
@@ -1416,7 +1416,7 @@ public final class MainActivity extends Activity {
     }
     private void customizeHome(){
         final String[] keys={"home_continue","home_movies","home_recent_added","home_favorites","home_recommendations"};
-        final String[] labels={"ادامهٔ تماشا","برترین آثار","تازه شناسایی‌شده‌ها","علاقه‌مندی‌ها","پیشنهاد برای شما"};
+        final String[] labels={"ادامهٔ تماشا","برترین آثار","تازه شناسایی‌شده‌ها","فهرست من","پیشنهاد برای شما"};
         String[] options=new String[keys.length+1];
         for(int i=0;i<keys.length;i++)options[i]=labels[i]+": "+(preferences.getBoolean(keys[i],true)?"نمایش":"مخفی");
         options[keys.length]="ترتیب ردیف‌های پیشنهادی";

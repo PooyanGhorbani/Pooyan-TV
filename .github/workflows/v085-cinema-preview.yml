@@ -1,10 +1,16 @@
-name: Pooyan TV v0.8.5 Cinema Stability Preview
+name: Pooyan TV v0.8.6 Cinema Stability Preview
 
 on:
   push:
     branches:
-      - ui/cinema-v085
+      - ui/cinema-v086
   workflow_dispatch:
+    inputs:
+      publish_prerelease:
+        description: "Publish a signed GitHub pre-release for the in-app updater"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -12,6 +18,8 @@ permissions:
 jobs:
   preview-apk:
     needs: android-tv
+    outputs:
+      persistent_key: ${{ steps.key.outputs.persistent }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -30,6 +38,7 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Restore optional persistent preview signing key
+        id: key
         shell: bash
         env:
           PREVIEW_KEYSTORE_BASE64: ${{ secrets.POOYAN_PREVIEW_KEYSTORE_BASE64 }}
@@ -38,8 +47,10 @@ jobs:
           if [ -n "$PREVIEW_KEYSTORE_BASE64" ]; then
             printf '%s' "$PREVIEW_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pooyan-preview.jks"
             echo "POOYAN_PREVIEW_SIGNING_STORE_FILE=$RUNNER_TEMP/pooyan-preview.jks" >> "$GITHUB_ENV"
+            echo "persistent=true" >> "$GITHUB_OUTPUT"
           else
-            echo '::warning::No persistent preview keystore: debug-signed APK may not replace previous preview installations.'
+            echo "persistent=false" >> "$GITHUB_OUTPUT"
+            echo '::warning::Without the persistent signing key this artifact cannot upgrade previous previews in place.'
           fi
       - name: Build, unit tests and lint
         env:
@@ -53,17 +64,81 @@ jobs:
           set -euo pipefail
           apk=app/build/outputs/apk/debug/app-debug.apk
           test -s "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.pooyan.namakadetv.dev083catalog' versionCode='50' versionName='0.8.5'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.pooyan.namakadetv.dev083catalog' versionCode='51' versionName='0.8.6'"
           mkdir -p dist
-          cp "$apk" dist/Pooyan-TV-v0.8.5-preview.apk
-          (cd dist && sha256sum Pooyan-TV-v0.8.5-preview.apk > SHA256SUMS.txt)
+          cp "$apk" dist/Pooyan-TV-v0.8.6-preview.apk
+          (cd dist && sha256sum Pooyan-TV-v0.8.6-preview.apk > SHA256SUMS.txt)
           cat dist/SHA256SUMS.txt
+      - name: Verify the preview signing certificate for publishable artifacts
+        if: ${{ steps.key.outputs.persistent == 'true' }}
+        shell: bash
+        env:
+          POOYAN_PREVIEW_KEYSTORE_PASSWORD: ${{ secrets.POOYAN_PREVIEW_KEYSTORE_PASSWORD }}
+          POOYAN_PREVIEW_KEY_ALIAS: ${{ secrets.POOYAN_PREVIEW_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          actual=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)
+          expected=$(keytool -list -v -keystore "$POOYAN_PREVIEW_SIGNING_STORE_FILE" \
+            -alias "$POOYAN_PREVIEW_KEY_ALIAS" -storepass "$POOYAN_PREVIEW_KEYSTORE_PASSWORD" \
+            | awk '/SHA256:/{sub(/.*SHA256: /, ""); gsub(/:/, ""); print tolower($0); exit}')
+          test -n "$actual"
+          test -n "$expected"
+          test "$actual" = "$expected"
+          printf '%s\n' "$actual" > dist/SIGNING_CERT_SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-v0.8.5-Cinema-Stability-APK
+          name: Pooyan-TV-v0.8.6-Cinema-Stability-APK
           path: dist/*
           retention-days: 30
           if-no-files-found: error
+
+  publish-prerelease:
+    # A GitHub Actions artifact is NOT a GitHub Release asset and is invisible to the app updater.
+    needs: preview-apk
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_prerelease }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Refuse to publish without persistent preview signing
+        if: ${{ needs.preview-apk.outputs.persistent_key != 'true' }}
+        run: |
+          echo '::error::Cannot publish in-place updates without a fixed preview signing key. See docs/PREVIEW_SIGNING_FA.md.'
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: Pooyan-TV-v0.8.6-Cinema-Stability-APK
+          path: dist
+      - name: Verify files before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/SIGNING_CERT_SHA256.txt
+          (cd dist && sha256sum -c SHA256SUMS.txt)
+          test -s dist/Pooyan-TV-v0.8.6-preview.apk
+      - name: Enforce pinned signing certificate across all preview releases
+        env:
+          POOYAN_PREVIEW_CERT_SHA256: ${{ vars.POOYAN_PREVIEW_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$POOYAN_PREVIEW_CERT_SHA256" ]; then
+            echo '::error::Set the POOYAN_PREVIEW_CERT_SHA256 repository variable to the published signing certificate fingerprint.'
+            exit 1
+          fi
+          expected=$(printf '%s' "$POOYAN_PREVIEW_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          actual=$(head -n 1 dist/SIGNING_CERT_SHA256.txt)
+          test "$actual" = "$expected" || { echo '::error::Signing certificate changed; in-place upgrade would fail'; exit 1; }
+      - name: Publish pre-release v0.8.6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create v0.8.6 dist/Pooyan-TV-v0.8.6-preview.apk dist/SHA256SUMS.txt dist/SIGNING_CERT_SHA256.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Pooyan TV v0.8.6 (preview)" \
+            --notes "Signed preview. In-place updates require the same package ID and signing key."
 
   android-tv:
     name: Android TV (${{ matrix.display }})

@@ -106,6 +106,17 @@ public final class UpdaterActivity extends Activity {
         close.setOnClickListener(v -> finish());
         layout.addView(close);
         check.requestFocus();
+        cleanupStaleApk();
+    }
+
+    /** Remove expired cached installer; never erase application settings or watch history. */
+    private void cleanupStaleApk() {
+        io.execute(() -> {
+            try {
+                File apk = new File(new File(getCacheDir(), "updates"), "pooyan-verified.apk");
+                if (apk.isFile() && System.currentTimeMillis() - apk.lastModified() > 3600000L) apk.delete();
+            } catch (Exception ignored) { }
+        });
     }
 
     private void show(String message) {
@@ -141,7 +152,7 @@ public final class UpdaterActivity extends Activity {
             c.setInstanceFollowRedirects(false);
             c.setConnectTimeout(12000);
             c.setReadTimeout(16000);
-            c.setRequestProperty("User-Agent", "PooyanTV-Updater/0.8.4");
+            c.setRequestProperty("User-Agent", "PooyanTV-Updater/" + BuildConfig.VERSION_NAME);
             int response = c.getResponseCode();
             if (response == 301 || response == 302 || response == 303 || response == 307 || response == 308) {
                 String location = c.getHeaderField("Location");
@@ -149,6 +160,10 @@ public final class UpdaterActivity extends Activity {
                 current = new URL(new URL(current), location).toString();
                 c.disconnect();
                 continue;
+            }
+            if (response == 403 || response == 429) {
+                c.disconnect();
+                throw new IllegalStateException("محدودیت موقت GitHub (HTTP " + response + ")؛ چند دقیقه بعد دوباره امتحان کن");
             }
             if (response != 200) { c.disconnect(); throw new IllegalStateException("GitHub HTTP " + response); }
             return c;
@@ -197,35 +212,39 @@ public final class UpdaterActivity extends Activity {
         return best;
     }
 
-    /** One asynchronous release query at each MainActivity launch (not on every resume). */
+    /** One background check for each MainActivity.onCreate; never retain an old Activity. */
     public static void maybeNotify(Activity activity) {
+        final java.lang.ref.WeakReference<Activity> ref = new java.lang.ref.WeakReference<>(activity);
+        final android.content.Context app = activity.getApplicationContext();
+        final String packageName = activity.getPackageName();
+        if (!supportedChannel(packageName)) return;
         new Thread(() -> {
             try {
                 JSONArray releases = fetchReleases();
-                activity.getSharedPreferences("pooyan_updates", MODE_PRIVATE).edit()
+                app.getSharedPreferences("pooyan_updates", android.content.Context.MODE_PRIVATE).edit()
                         .putLong("last_successful_check", System.currentTimeMillis()).apply();
-                if (!supportedChannel(activity.getPackageName())) return;
-                Release latest = select(releases, BuildConfig.VERSION_NAME,
-                        previewPackage(activity.getPackageName()));
-                if (latest != null) activity.runOnUiThread(() -> notifyWhenForeground(activity, latest, 0));
+                Release latest = select(releases, BuildConfig.VERSION_NAME, previewPackage(packageName));
+                Activity current = ref.get();
+                if (latest != null && current != null) current.runOnUiThread(() -> notifyWhenForeground(ref, latest, 0));
             } catch (Exception ignored) {
-                // Do not block the home screen when GitHub is unavailable; manual check reports errors.
+                // GitHub availability must never delay startup. A manual check reports errors.
             }
         }, "pooyan-update-startup").start();
     }
 
-    private static void notifyWhenForeground(Activity activity, Release release, int attempt) {
-        if (activity.isFinishing() || activity.isDestroyed()) return;
+    private static void notifyWhenForeground(java.lang.ref.WeakReference<Activity> ref,
+                                              Release release, int attempt) {
+        Activity activity = ref.get();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
         if (!activity.hasWindowFocus()) {
             if (attempt < 180) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                    () -> notifyWhenForeground(activity, release, attempt + 1), 2000);
+                    () -> notifyWhenForeground(ref, release, attempt + 1), 2000);
             return;
         }
         if (!prompted.add(release.tag)) return;
         new AlertDialog.Builder(activity)
                 .setTitle("آپدیت جدید Pooyan TV")
-                .setMessage("نسخهٔ " + release.tag + " برای همین کانال در GitHub منتشر شده. "
-                        + "نصب فقط در صورت سازگاری شناسه و امضای دیجیتال انجام می‌شود.")
+                .setMessage("نسخهٔ " + release.tag + " برای همین کانال منتشر شده. نصب فقط با امضا و شناسهٔ سازگار انجام می‌شود.")
                 .setNegativeButton("بعداً", null)
                 .setPositiveButton("مدیریت آپدیت", (d, which) ->
                         activity.startActivity(new Intent(activity, UpdaterActivity.class)))
