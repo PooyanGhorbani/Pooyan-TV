@@ -33,6 +33,7 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.datasource.DefaultDataSource;
@@ -64,6 +65,8 @@ public final class PlayerActivity extends Activity {
     private SharedPreferences profilePrefs;
     private final java.util.concurrent.ExecutorService verifier=java.util.concurrent.Executors.newSingleThreadExecutor();
     private List<PlaybackCandidate> candidates=new ArrayList<>();
+    private String ultimateKey="",ultimateSeriesKey="",ultimateManual="",ultimateLastReady="";
+    private boolean ultimateTrailerPlayback;
     private final SourceHealth.Session failoverSession=new SourceHealth.Session();
     private PlaybackCandidate currentCandidate;private boolean switching,stopping,nextOffered,nextLoading;
     private long compatibleDuration;private int playbackGeneration;
@@ -86,7 +89,7 @@ public final class PlayerActivity extends Activity {
     private int revealKey=-1;
     private final Runnable timelineTick=new Runnable(){public void run(){updateTimeline();handler.postDelayed(this,500);}};
     private TextView titleView, stateView, playButton;
-    private String streamUrl, pageUrl, name, userAgent, subtitleUrl;
+    private String streamUrl, pageUrl, name, userAgent, subtitleUrl, ultimateLastError="";
     private float speed = 1f;
     private long pendingPosition = -1;
     private boolean zoomMode = false;
@@ -120,14 +123,24 @@ public final class PlayerActivity extends Activity {
             finish(); return;
         }
         library = new LibraryStore(this);
+        ultimateTrailerPlayback=getIntent().getBooleanExtra("ultimate_trailer",false);
+        ultimateKey=getIntent().getStringExtra("ultimate_key");if(ultimateKey==null)ultimateKey="";
+        ultimateSeriesKey=getIntent().getStringExtra("ultimate_series_key");if(ultimateSeriesKey==null)ultimateSeriesKey="";
+        ultimateManual=getIntent().getStringExtra("ultimate_manual");if(ultimateManual==null)ultimateManual="";
         candidates=CandidateCodec.decode(getIntent().getStringExtra("candidates"));
+        candidates=UltimateSourceChoice.rank(candidates,UltimateIdentity.sourceFingerprint(ultimateManual),
+            new UltimateSourceStore(this).lastGood(ultimateKey),1080);
         if(candidates.isEmpty())candidates.add(new PlaybackCandidate(streamUrl,pageUrl,0,false));
-        currentCandidate=failoverSession.next(candidates,android.os.SystemClock.elapsedRealtime());
+        currentCandidate=failoverSession.nextOrdered(candidates,android.os.SystemClock.elapsedRealtime());
         if(currentCandidate!=null)streamUrl=currentCandidate.url;
         episodeContext=EpisodeOrder.decode(getIntent().getStringExtra("episodes"));
         nextEpisode=EpisodeOrder.next(episodeContext,pageUrl);
         nextRepository=new UnifiedRepository(this);nextImages=new CatalogImages(this);
         pendingPosition = state==null?library.getResumePosition(streamUrl,pageUrl):state.getLong("position",0);
+        if(state==null&&!ultimateKey.isEmpty()){
+            UltimateProgressStore.Progress saved=new UltimateProgressStore(this).get(ultimateKey);
+            if(saved!=null&&!saved.complete&&saved.position>0)pendingPosition=saved.position;
+        }
         if(state!=null)resumePlayWhenReady=state.getBoolean("playing",true);
         resumePrompt=state==null?pendingPosition>0:state.getBoolean("prompt",false);
         if(resumePrompt)resumePlayWhenReady=false;
@@ -141,7 +154,7 @@ public final class PlayerActivity extends Activity {
     }
     private void startChoice(boolean restart){
         resumePrompt=false;resumePlayWhenReady=true;
-        if(restart){pendingPosition=0;library.removePlayback(streamUrl,pageUrl);if(player!=null)player.seekTo(0);}
+        if(restart){pendingPosition=0;library.removePlayback(streamUrl,pageUrl);if(!ultimateKey.isEmpty())new UltimateProgressStore(this).clear(ultimateKey);if(player!=null)player.seekTo(0);}
         if(player!=null)player.play();revealControls();
     }
 
@@ -238,13 +251,13 @@ public final class PlayerActivity extends Activity {
         controls.getChildAt(1).requestFocus();
     }
     private void showMoreControls(){
-        String[] labels={"پرش دستی ۹۰ ثانیه","سرعت پخش","کیفیت تصویر","مسیر صدا","زیرنویس","افزودن زیرنویس","اندازهٔ زیرنویس","تأخیر زیرنویس","جای زیرنویس","سبک زیرنویس","قسمت بعد","اندازهٔ تصویر"};
+        String[] labels={"پرش دستی ۹۰ ثانیه","سرعت پخش","کیفیت تصویر","مسیر صدا","زیرنویس","افزودن زیرنویس","اندازهٔ زیرنویس","تأخیر زیرنویس","جای زیرنویس","سبک زیرنویس","قسمت بعد","اندازهٔ تصویر","انتخاب منبع","رد کردن تیتراژ","ثبت پایان تیتراژ","حالت اینترنت و بافر","رد کردن تیتراژ پایانی"};
         Runnable[] actions={()->seekBy(90000),this::chooseSpeed,()->chooseTrack(C.TRACK_TYPE_VIDEO),()->chooseTrack(C.TRACK_TYPE_AUDIO),()->chooseTrack(C.TRACK_TYPE_TEXT),this::addSubtitle,this::subtitleSize,this::subtitleDelay,this::subtitlePosition,this::subtitleStyle,()->showNext(true),()->{
             zoomMode = !zoomMode;
             playerView.setResizeMode(zoomMode ? AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     : AspectRatioFrameLayout.RESIZE_MODE_FIT);
             toast(zoomMode ? "بزرگنمایی (ممکن است تصویر برش بخورد)" : "نمایش کامل تصویر");
-        }};
+        },this::ultimateChoosePlayerSource,this::ultimateSkipIntro,this::ultimateMarkIntroEnd,this::ultimateBufferSettings,()->showNext(true)};
         advancedDialog=new AlertDialog.Builder(this).setTitle("کنترل‌های پخش").setItems(labels,(dialog,which)->{actions[which].run();revealControls();}).setNegativeButton("بستن",null).create();
         advancedDialog.show();
     }
@@ -275,9 +288,15 @@ public final class PlayerActivity extends Activity {
         DefaultDataSource.Factory source = new DefaultDataSource.Factory(this, http);
         DefaultMediaSourceFactory mediaSources = new DefaultMediaSourceFactory(source);
         trackSelector = new DefaultTrackSelector(this);
-        trackSelector.setParameters(trackSelector.buildUponParameters().setPreferredAudioLanguage(profilePrefs.getString("audio","fa")).setPreferredTextLanguage(profilePrefs.getString("text","fa")).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,profilePrefs.getBoolean("subtitle_off",false)));
+        DefaultTrackSelector.Parameters.Builder startTracks=trackSelector.buildUponParameters()
+            .setPreferredAudioLanguage(profilePrefs.getString("audio","fa"))
+            .setPreferredTextLanguage(profilePrefs.getString("text","fa"))
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT,profilePrefs.getBoolean("subtitle_off",false));
+        if(ultimateNetMode()==2)startTracks.setMaxVideoSize(1280,720);
+        trackSelector.setParameters(startTracks);
         player = new ExoPlayer.Builder(this)
                 .setTrackSelector(trackSelector)
+                .setLoadControl(ultimateLoadControl())
                 .setMediaSourceFactory(mediaSources)
                 .build();
         playerView.setPlayer(player);
@@ -290,10 +309,16 @@ public final class PlayerActivity extends Activity {
             @Override public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_BUFFERING) stateView.setText("در حال بارگذاری ویدئو…");
                 else if (state == Player.STATE_READY) {
+                    if(!ultimateKey.isEmpty()&&currentCandidate!=null&&
+                        !currentCandidate.url.equals(ultimateLastReady)){
+                        new UltimateSourceStore(PlayerActivity.this).success(ultimateKey,currentCandidate.url);
+                        new UltimateDiagnostics(PlayerActivity.this).count("success");
+                        ultimateLastReady=currentCandidate.url;
+                    }
                     long duration=player.getDuration();
                     if(compatibleDuration>0&&duration>0&&Math.abs(duration-compatibleDuration)>Math.max(60000,compatibleDuration/20)){failover(SourceHealth.Failure.INCOMPATIBLE);return;}
                     if(duration>0)compatibleDuration=duration;
-                    stateView.setText("پخش آماده است · جهت چپ/راست: جابه‌جایی ۱۰ ثانیه");
+                    stateView.setText("پخش آماده است"+ultimateVerifiedFormat()+" · جهت چپ/راست: جابه‌جایی ۱۰ ثانیه");
                 }
                 else if (state == Player.STATE_ENDED) { stateView.setText("پخش تمام شد"); saveProgress(); }
             }
@@ -301,11 +326,15 @@ public final class PlayerActivity extends Activity {
                 if (playButton != null) playButton.setText(playing ? "Ⅱ مکث" : "▶ پخش");
             }
             @Override public void onPlayerError(PlaybackException error) {
-                stateView.setText("خطای منبع: " + error.getErrorCodeName());
+                ultimateLastError=ultimateFriendlyError(error);stateView.setText(ultimateLastError);
                 String code=error.getErrorCodeName();
                 SourceHealth.Failure why=code.contains("DECOD")?SourceHealth.Failure.DECODING:code.contains("TIMEOUT")?SourceHealth.Failure.TIMEOUT:code.contains("PARSING")?SourceHealth.Failure.PARSING:code.contains("FORMAT")?SourceHealth.Failure.UNSUPPORTED:SourceHealth.Failure.NETWORK;
                 Throwable cause=error;
                 while(cause!=null){if(cause instanceof androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException){int status=((androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)cause).responseCode;why=status==410?SourceHealth.Failure.EXPIRED:status==401||status==402||status==403?SourceHealth.Failure.ACCESS:SourceHealth.Failure.HTTP;break;}cause=cause.getCause();}
+                new UltimateDiagnostics(PlayerActivity.this).count(
+                    why==SourceHealth.Failure.ACCESS?"access":why==SourceHealth.Failure.TIMEOUT?"timeout":
+                    why==SourceHealth.Failure.DECODING||why==SourceHealth.Failure.UNSUPPORTED?"decoder":
+                    why==SourceHealth.Failure.HTTP?"http":why==SourceHealth.Failure.NETWORK?"network":"other");
                 failover(why);
             }
         });
@@ -342,7 +371,7 @@ public final class PlayerActivity extends Activity {
         if(player==null||seekBar==null)return;
         long position=Math.max(0,player.getCurrentPosition()),duration=player.getDuration();
         boolean finite=duration>0&&duration!=C.TIME_UNSET&&!player.isCurrentMediaItemLive();
-        timelineText.setText(PlaybackResumePolicy.time(position)+" / "+(finite?PlaybackResumePolicy.time(duration):player.isCurrentMediaItemLive()?"زنده":"--:--")+"    باقی‌مانده: "+(finite?PlaybackResumePolicy.time(Math.max(0,duration-position)):"--:--"));
+        timelineText.setText(PlaybackResumePolicy.time(position)+" / "+(finite?PlaybackResumePolicy.time(duration):player.isCurrentMediaItemLive()?"زنده":"--:--")+"    باقی‌مانده: "+(finite?PlaybackResumePolicy.time(Math.max(0,duration-position)):"--:--")+ultimateBufferText(position));
         boolean enabled=canSeek();
         if(!enabled&&seekBar.isFocused())playButton.requestFocus();
         seekBar.setEnabled(enabled);seekBar.setFocusable(enabled);
@@ -454,13 +483,15 @@ public final class PlayerActivity extends Activity {
     }
     private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_SHORT).show(); }
     private void saveProgress() {
-        if (library == null || player == null || resumePrompt || player.isCurrentMediaItemLive()) return;
+        if (library == null || player == null || resumePrompt || player.isCurrentMediaItemLive() || ultimateTrailerPlayback) return;
         long duration = player.getDuration();
         long position = player.getCurrentPosition();
-        if(player.getPlaybackState()==Player.STATE_ENDED){library.complete(name,streamUrl,pageUrl,duration>0?duration:0);return;}
+        if(player.getPlaybackState()==Player.STATE_ENDED){library.complete(name,streamUrl,pageUrl,duration>0?duration:0);if(!ultimateKey.isEmpty())new UltimateProgressStore(this).save(ultimateKey,Math.max(0,duration),duration,true);return;}
         if(position<=0&&player.getPlaybackState()==Player.STATE_READY){library.removePlayback(streamUrl,pageUrl);return;}
         library.savePlayback(name, streamUrl, pageUrl, Math.max(0, position),
                 duration > 0 && duration != C.TIME_UNSET ? duration : 0);
+        if(!ultimateKey.isEmpty())new UltimateProgressStore(this).save(ultimateKey,position,duration,
+            PlaybackResumePolicy.completed(position,duration));
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
@@ -568,12 +599,108 @@ public final class PlayerActivity extends Activity {
         .setTitle("شکل زیرنویس").setItems(new String[]{"حالت اصلی فیلم","سفید با خط دور مشکی","سفید با زمینهٔ تیره"},(d,i)->{
             profilePrefs.edit().putInt("subtitle_style",i).apply();applySubtitleStyle(i);
         }).show();}
+    private void ultimateChoosePlayerSource(){
+        if(candidates.isEmpty()){toast("منبع دیگری در این فیلم ثبت نشده است.");return;}
+        String[] labels=new String[candidates.size()];
+        for(int i=0;i<candidates.size();i++)labels[i]="منبع "+(i+1)+" · "+UltimateSourceChoice.quality(candidates.get(i).height)
+             +(currentCandidate!=null&&currentCandidate.url.equals(candidates.get(i).url)?" ✓":"");
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+            .setTitle("انتخاب منبع پخش").setItems(labels,(d,n)->{
+                PlaybackCandidate c=candidates.get(n);
+                if(!StreamDetector.isDirectMedia(c.url))return;
+                if(currentCandidate!=null&&c.url.equals(currentCandidate.url))return;
+                long position=player==null?0:Math.max(0,player.getCurrentPosition());
+                boolean playing=player!=null&&player.getPlayWhenReady();
+                currentCandidate=c;streamUrl=c.url;pendingPosition=position;resumePlayWhenReady=playing;
+                failoverSession.markTried(c.url);
+                if(player!=null){
+                    java.util.Map<String,String> headers=new java.util.LinkedHashMap<>();
+                    if(StreamDetector.isHttpsUrl(c.page)){
+                        Uri uri=Uri.parse(c.page);headers.put("Referer",uri.getScheme()+"://"+uri.getEncodedAuthority()+"/");
+                    }
+                    httpFactory.setDefaultRequestProperties(headers);
+                    player.setMediaItem(mediaItem(),position);player.prepare();player.setPlayWhenReady(playing);
+                }else initPlayer();
+                revealControls();
+            }).setNegativeButton("لغو",null).show();
+    }
+    private void ultimateSkipIntro(){
+        if(ultimateSeriesKey.isEmpty()||player==null){toast("این گزینه برای سریال‌هاست.");return;}
+        long destination=new UltimateSkipStore(this).introEnd(ultimateSeriesKey);
+        if(destination>0&&canSeek()&&destination<player.getDuration()&&player.getCurrentPosition()<destination){
+            player.seekTo(destination);revealControls();
+        }else toast("ابتدا در انتهای تیتراژ شروع، نشانگر را ثبت کن.");
+    }
+    private void ultimateMarkIntroEnd(){
+        if(ultimateSeriesKey.isEmpty()||player==null||!canSeek()){toast("نشانگر معتبر در دسترس نیست.");return;}
+        long current=player.getCurrentPosition();
+        new UltimateSkipStore(this).setIntroEnd(ultimateSeriesKey,current);
+        toast("زمان پایان تیتراژ برای قسمت‌های این سریال ثبت شد.");
+    }
+    private String ultimateVerifiedFormat(){
+        if(player==null)return "";
+        StringBuilder out=new StringBuilder();
+        Format video=player.getVideoFormat();
+        if(video!=null){
+            if(video.height>0)out.append(" · ").append(UltimateSourceChoice.quality(video.height));
+            if(video.colorInfo!=null&&(video.colorInfo.colorTransfer==C.COLOR_TRANSFER_ST2084||
+                video.colorInfo.colorTransfer==C.COLOR_TRANSFER_HLG))out.append(" · HDR");
+        }
+        Format audio=player.getAudioFormat();
+        if(audio!=null&&audio.channelCount>=6)out.append(audio.channelCount>=8?" · 7.1ch":" · 5.1ch");
+        return out.toString();
+    }
+    // Profiles keep their own network mode. Mode 2 caps selected video tracks to 720p.
+    private int ultimateNetMode(){return Math.max(0,Math.min(2,profilePrefs.getInt("net_mode",0)));}
+    private DefaultLoadControl ultimateLoadControl(){
+        DefaultLoadControl.Builder b=new DefaultLoadControl.Builder();
+        int mode=ultimateNetMode();
+        if(mode==1)b.setBufferDurationsMs(30000,120000,3000,8000);
+        if(mode==2)b.setBufferDurationsMs(60000,180000,5000,12000);
+        return b.build();
+    }
+    private void ultimateBufferSettings(){
+        String[] names={"خودکار (پیش‌فرض)","اینترنت متوسط · بافر بزرگ", "اینترنت ضعیف · بافر بیشتر و سقف 720p"};
+        names[ultimateNetMode()]+=" ✓";
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+            .setTitle("حالت اینترنت و بافر")
+            .setItems(names,(d,n)->{profilePrefs.edit().putInt("net_mode",n).apply();ultimateRebuildPlayer();})
+            .setNegativeButton("لغو",null).show();
+    }
+    private void ultimateRebuildPlayer(){
+        if(player==null||stopping||isFinishing())return;
+        pendingPosition=Math.max(0,player.getCurrentPosition());
+        resumePlayWhenReady=player.getPlayWhenReady();
+        saveProgress();cancelNext();handler.removeCallbacks(cueTicker);cueQueue.clear();
+        player.release();player=null;trackSelector=null;
+        if(playerView!=null)playerView.setPlayer(null);
+        initPlayer();
+    }
+    private String ultimateBufferText(long position){
+        if(player==null)return "";
+        long seconds=(player.getBufferedPosition()-position)/1000;
+        return seconds>0?" · بافر: "+seconds+" ث":"";
+    }
+    private String ultimateFriendlyError(PlaybackException error){
+        Throwable current=error;
+        while(current!=null){
+            if(current instanceof javax.net.ssl.SSLException)return "خطای گواهی SSL؛ تاریخ و ساعت تلویزیون را بررسی کن.";
+            if(current instanceof java.net.UnknownHostException)return "آدرس سرور پیدا نشد؛ اتصال اینترنت یا DNS را بررسی کن.";
+            if(current instanceof java.net.SocketTimeoutException)return "سرور پاسخ نداد؛ حالت اینترنت و بافر را امتحان کن.";
+            current=current.getCause();
+        }
+        String code=error.getErrorCodeName();
+        if(code.contains("DECOD"))return "قالب ویدئو با رمزگشای تلویزیون سازگار نیست.";
+        if(code.contains("TIMEOUT"))return "ارتباط با منبع به پایان زمان مجاز رسید.";
+        if(code.contains("HTTP"))return "سرور ویدئو درخواست را نپذیرفت؛ منبع جایگزین را امتحان کن.";
+        return "خطای پخش: "+code;
+    }
     private void failover(SourceHealth.Failure reason){
         if(switching||stopping||isFinishing())return;
         cancelNext();if(currentCandidate!=null)SourceHealth.failed(currentCandidate.url,reason,android.os.SystemClock.elapsedRealtime());
         long position=player==null?Math.max(0,pendingPosition):Math.max(0,player.getCurrentPosition());
         boolean playing=player!=null?player.getPlayWhenReady():resumePlayWhenReady;
-        PlaybackCandidate next=failoverSession.next(candidates,android.os.SystemClock.elapsedRealtime());
+        PlaybackCandidate next=failoverSession.nextOrdered(candidates,android.os.SystemClock.elapsedRealtime());
         if(next==null){exhausted(reason);return;}
         final int generation=playbackGeneration;
         switching=true;stateView.setText("در حال بررسی منبع جایگزین…");

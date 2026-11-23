@@ -28,9 +28,16 @@ public final class CatalogMerge {
                 FarsiPlexTitle first=distinct.get(key);
                 if(first!=null && !first.year.isEmpty() && !item.year.isEmpty() && !first.year.equals(item.year))
                     key=key+"|"+item.year;
-                FarsiPlexTitle chosen=distinct.get(key);
-                if(chosen==null)distinct.put(key,item);
-                else if(!chosen.url.equals(item.url))variants.computeIfAbsent(chosen.url,k->new ArrayList<>()).add(item);
+                // Merge strong cross-provider matches, not merely provider-specific page URLs.
+                FarsiPlexTitle chosen=null;
+                for(FarsiPlexTitle candidate:distinct.values())
+                    if(UltimateIdentity.sameTitle(candidate,item)){chosen=candidate;break;}
+                if(chosen==null){
+                    // Different trusted IDs can share a visible name: NEVER overwrite a distinct entry.
+                    if(distinct.containsKey(key))key=key+"|page:"+UltimateIdentity.sha256(item.url);
+                    distinct.put(key,item);
+                }else if(!chosen.url.equals(item.url))
+                    variants.computeIfAbsent(chosen.url,k->new ArrayList<>()).add(item);
             }
         }
         return new ArrayList<>(distinct.values());

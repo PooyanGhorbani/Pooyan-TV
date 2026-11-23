@@ -1,9 +1,9 @@
-name: Pooyan TV v0.8.6 Cinema Stability Preview
+name: Pooyan TV v0.8.7 Cinema Stability Preview
 
 on:
   push:
     branches:
-      - ui/cinema-v086
+      - ui/ultimate-v087
   workflow_dispatch:
     inputs:
       publish_prerelease:
@@ -64,10 +64,10 @@ jobs:
           set -euo pipefail
           apk=app/build/outputs/apk/debug/app-debug.apk
           test -s "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.pooyan.namakadetv.dev083catalog' versionCode='51' versionName='0.8.6'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.pooyan.namakadetv.dev083catalog' versionCode='52' versionName='0.8.7'"
           mkdir -p dist
-          cp "$apk" dist/Pooyan-TV-v0.8.6-preview.apk
-          (cd dist && sha256sum Pooyan-TV-v0.8.6-preview.apk > SHA256SUMS.txt)
+          cp "$apk" dist/Pooyan-TV-v0.8.7-preview.apk
+          (cd dist && sha256sum Pooyan-TV-v0.8.7-preview.apk > SHA256SUMS.txt)
           cat dist/SHA256SUMS.txt
       - name: Verify the preview signing certificate for publishable artifacts
         if: ${{ steps.key.outputs.persistent == 'true' }}
@@ -88,7 +88,7 @@ jobs:
           printf '%s\n' "$actual" > dist/SIGNING_CERT_SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: Pooyan-TV-v0.8.6-Cinema-Stability-APK
+          name: Pooyan-TV-v0.8.7-Ultimate-All-In-One-APK
           path: dist/*
           retention-days: 30
           if-no-files-found: error
@@ -108,7 +108,7 @@ jobs:
           exit 1
       - uses: actions/download-artifact@v4
         with:
-          name: Pooyan-TV-v0.8.6-Cinema-Stability-APK
+          name: Pooyan-TV-v0.8.7-Ultimate-All-In-One-APK
           path: dist
       - name: Verify files before publishing
         shell: bash
@@ -116,7 +116,7 @@ jobs:
           set -euo pipefail
           test -s dist/SIGNING_CERT_SHA256.txt
           (cd dist && sha256sum -c SHA256SUMS.txt)
-          test -s dist/Pooyan-TV-v0.8.6-preview.apk
+          test -s dist/Pooyan-TV-v0.8.7-preview.apk
       - name: Enforce pinned signing certificate across all preview releases
         env:
           POOYAN_PREVIEW_CERT_SHA256: ${{ vars.POOYAN_PREVIEW_CERT_SHA256 }}
@@ -130,14 +130,14 @@ jobs:
           expected=$(printf '%s' "$POOYAN_PREVIEW_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')
           actual=$(head -n 1 dist/SIGNING_CERT_SHA256.txt)
           test "$actual" = "$expected" || { echo '::error::Signing certificate changed; in-place upgrade would fail'; exit 1; }
-      - name: Publish pre-release v0.8.6
+      - name: Publish pre-release v0.8.7
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release create v0.8.6 dist/Pooyan-TV-v0.8.6-preview.apk dist/SHA256SUMS.txt dist/SIGNING_CERT_SHA256.txt \
+          gh release create v0.8.7 dist/Pooyan-TV-v0.8.7-preview.apk dist/SHA256SUMS.txt dist/SIGNING_CERT_SHA256.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "Pooyan TV v0.8.6 (preview)" \
+            --title "Pooyan TV v0.8.7 (preview)" \
             --notes "Signed preview. In-place updates require the same package ID and signing key."
 
   android-tv:

@@ -113,7 +113,37 @@ public final class StremioAddonRepository {
         item.stableId=id.startsWith("tt") && id.matches("tt\\d{5,12}")?id:"";
         item.year=year(obj);
         item.genre=genres(obj);
-        item.description=obj.optString("description","");
+                item.description=obj.optString("description","");
+        item.rating=obj.optString("imdbRating",obj.optString("rating","")).trim();
+        item.runtime=obj.optString("runtime","").trim();
+        item.country=obj.optString("country","").trim();
+        item.ageRating=obj.optString("certification","").trim();
+        org.json.JSONArray directors=obj.optJSONArray("director");
+        item.director=directors!=null&&directors.length()>0?directors.optString(0,""):obj.optString("director","");
+        org.json.JSONArray actors=obj.optJSONArray("cast");
+        if(actors!=null){StringBuilder cast=new StringBuilder();
+            for(int i=0;i<Math.min(6,actors.length());i++){
+                String person=actors.optString(i,"");if(person.isEmpty())continue;
+                if(cast.length()>0)cast.append("، ");cast.append(person);
+            }
+            item.cast=cast.toString();
+        }
+        org.json.JSONArray trailerStreams=obj.optJSONArray("trailerStreams");
+        if(trailerStreams!=null)for(int i=0;i<Math.min(8,trailerStreams.length());i++){
+            org.json.JSONObject tr=trailerStreams.optJSONObject(i);if(tr==null)continue;
+            String link=tr.optString("url","");
+            if(StreamDetector.isDirectMedia(link)){item.trailerUrl=link;break;}
+        }
+        if(item.trailerUrl.isEmpty()){
+            org.json.JSONArray trailers=obj.optJSONArray("trailers");
+            if(trailers!=null)for(int i=0;i<Math.min(8,trailers.length());i++){
+                org.json.JSONObject tr=trailers.optJSONObject(i);if(tr==null)continue;
+                String source=tr.optString("source","");
+                if(source.matches("[A-Za-z0-9_-]{11}")){
+                    item.trailerUrl="https://www.youtube.com/watch?v="+source;break;
+                }
+            }
+        }
         if (item.description.length()>2000) item.description=item.description.substring(0,2000);
         String poster=first(obj.optString("poster"),obj.optString("background"));
         if (ImageUrlPolicy.allowed(poster)) item.poster=poster;
@@ -253,6 +283,13 @@ public final class StremioAddonRepository {
                             details.genre=first(details.genre,item.genre);
                             details.year=first(details.year,item.year);
                             details.description=first(details.description,item.description);
+                             details.rating=first(details.rating,item.rating);
+                             details.runtime=first(details.runtime,item.runtime);
+                             details.cast=first(details.cast,item.cast);
+                             details.director=first(details.director,item.director);
+                             details.country=first(details.country,item.country);
+                             details.ageRating=first(details.ageRating,item.ageRating);
+                             details.trailerUrl=first(details.trailerUrl,item.trailerUrl);
                             JSONArray videos=metadata.optJSONArray("videos");
                             if("series".equals(type) && videos!=null) {
                                 for(int i=0;i<videos.length()&&details.episodes.size()<250;i++) {

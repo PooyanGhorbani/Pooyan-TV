@@ -83,6 +83,10 @@ public final class MainActivity extends Activity {
     private final java.util.Map<Integer,List<FarsiPlexTitle>> browsePages=new java.util.LinkedHashMap<>();
     private int browseSortMode=CatalogOrdering.NEWEST,searchSortMode=CatalogOrdering.RELEVANCE;
     private TextView browseSortButton,searchSortButton;
+    private String ultimateBrowseGenre="";
+    private int ultimateBrowseSince=0,ultimateBrowseUntil=0,ultimateBrowseRating=0;
+    private boolean ultimateBrowseUnwatched=false;
+    private String ultimateManualRequest="";
     private LinearLayout listingContainer;
     private TextView nextPage;
     private boolean fetching, hasMore=true;
@@ -364,7 +368,8 @@ public final class MainActivity extends Activity {
         continueSlot=vertical();content.addView(continueSlot,lp(-1,-2));
         addContinueWatching();
         continueSlot.setVisibility(preferences.getBoolean("home_continue",true)?View.VISIBLE:View.GONE);
-        content.addView(button("سورپرایزم کن از کاتالوگ",false,this::surpriseMe),lp(285,48));
+        content.addView(button("امشب چی ببینم؟",false,this::surpriseMe),lp(245,48));
+        content.addView(button("مجموعه‌های فیلم",false,this::ultimateCollections),lp(245,48));
         title("جدیدترین فیلم‌ها","بر اساس سال انتشارِ موجود در کاتالوگ");rail("movie");
         movieSlot=vertical();recentSlot=vertical();favoriteSlot=vertical();recommendSlot=vertical();
         for(String key:HomeRowsPolicy.order(preferences.getString("home_row_order",""))){
@@ -374,6 +379,7 @@ public final class MainActivity extends Activity {
             content.addView(slot,lp(-1,-2));
         }
         refreshHomeExtras();
+        if(!offlineUiTest)heroHandler.postDelayed(()->{if(!destroyed&&!isFinishing())ultimateScanFollowed(false);},4500);
         title("جدیدترین سریال‌ها","بر اساس سال انتشارِ موجود در کاتالوگ");rail("series");
         content.addView(button("همهٔ فیلم‌ها",false,()->browse("movie")),lp(210,50));
         content.addView(button("تاریخچهٔ تماشا",false,this::historyScreen),lp(230,50));
@@ -385,20 +391,28 @@ public final class MainActivity extends Activity {
         return HeroViewportPolicy.heroHeight(Math.round(heightDp));
     }
     private void surpriseMe(){
-        List<FarsiPlexTitle> catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
-        if(catalog.isEmpty()){info("ابتدا باید پیشنهادهای فیلم و سریال دریافت شوند.");return;}
-        LibraryStore library=new LibraryStore(this);
-        FarsiPlexTitle choice=DiscoveryPolicy.surprise(catalog,
-            Recommendations.rank(catalog,favoriteItems(),library.watched()),library.watched(),
-            System.currentTimeMillis()/30000L+(++surpriseCounter));
-        if(choice!=null)detail(choice);
+        final String[] labels={"از همهٔ آثار ندیده", "فقط کمدی", "فقط درام",
+            "از سال ۲۰۲۰", "امتیاز ۷ به بالا"};
+        new AlertDialog.Builder(this).setTitle("امشب چی ببینم؟")
+            .setItems(labels,(d,n)->{
+                List<FarsiPlexTitle> all=new ArrayList<>(loadedMovies);all.addAll(loadedSeries);
+                List<FarsiPlexTitle> filtered=UltimateDiscovery.filter(all,"",
+                    n==1?"comedy":n==2?"drama":"",n==3?2020:0,0,n==4?7:0,null,false);
+                filtered=ultimateVisible(filtered);
+                UltimateWatchlist states=new UltimateWatchlist(this);
+                FarsiPlexTitle choice=UltimateDiscovery.surprise(filtered,states.markedIn("hidden",filtered),
+                    new UltimateProgressStore(this).completedKeys(filtered),
+                    System.currentTimeMillis()/60000L+(++surpriseCounter));
+                if(choice==null){info("برای این معیارها فیلم یا سریال تازه‌ای در داده‌های دریافت‌شده پیدا نشد.");return;}
+                detail(choice);
+            }).setNegativeButton("لغو",null).show();
     }
     private void refreshFeaturedCarousel(){
         if(!"home".equals(screen)||heroIndicator==null)return;
         String old=featured==null?"":featured.url;
         List<FarsiPlexTitle> slides=HomeHeroPolicy.select(
-            CatalogOrdering.order(loadedMovies,CatalogOrdering.NEWEST,null,""),
-            CatalogOrdering.order(loadedSeries,CatalogOrdering.NEWEST,null,""));
+            ultimateVisible(CatalogOrdering.order(loadedMovies,CatalogOrdering.NEWEST,null,"")),
+            ultimateVisible(CatalogOrdering.order(loadedSeries,CatalogOrdering.NEWEST,null,"")));
         heroSlides.clear();heroSlides.addAll(slides);
         heroIndex=0;
         for(int i=0;i<heroSlides.size();i++)if(heroSlides.get(i).url.equals(old)){heroIndex=i;break;}
@@ -457,6 +471,7 @@ public final class MainActivity extends Activity {
     }
     private void addContinueWatching(){
         if(continueSlot==null)return;
+        if(new UltimateKidMode(this).enabled()){continueSlot.removeAllViews();return;}
         continueSlot.removeAllViews();
         List<LibraryStore.Entry> entries=new LibraryStore(this).resumeList();
         LinearLayout row=horizontal();row.setGravity(Gravity.TOP);row.setTag("poster-row");
@@ -490,6 +505,7 @@ public final class MainActivity extends Activity {
     }
     /** Stable rail rendering: preserve the focused poster across incremental network results. */
     private void renderRailTitles(LinearLayout row,List<FarsiPlexTitle> titles){
+        titles=ultimateVisible(titles);
         StringBuilder fingerprint=new StringBuilder();int limit=Math.min(18,titles.size());
         for(int i=0;i<limit;i++){
             FarsiPlexTitle item=titles.get(i);
@@ -519,10 +535,14 @@ public final class MainActivity extends Activity {
             renderRailTitles(row,ranked);return;
         }
         if(offlineUiTest)return;
+        List<FarsiPlexTitle> previousSnapshot=new UltimateCatalogCache(this).read(kind);
+        if(!previousSnapshot.isEmpty())renderRailTitles(row,ultimateVisible(
+            CatalogOrdering.order(previousSnapshot,CatalogOrdering.NEWEST,null,"")));
         source.list(kind,1,(list,error)->{
             if(destroyed || token!=generation || !"home".equals(screen))return;
             if(!list.isEmpty()){
                 cache.clear();cache.addAll(list);
+                new UltimateCatalogCache(this).save(kind,list);
                 CatalogFirstSeen.record(this,list);
                 List<FarsiPlexTitle> ranked=CatalogOrdering.order(list,CatalogOrdering.NEWEST,null,"");
                 renderRailTitles(row,ranked);
@@ -542,6 +562,7 @@ public final class MainActivity extends Activity {
         title("movie".equals(kind)?"فیلم‌ها":"سریال‌ها","مرتب‌سازی روی عناوین دریافت‌شده اعمال می‌شود.");
         browseSortButton=button("مرتب‌سازی: "+CatalogOrdering.label(browseSortMode),false,this::chooseBrowseSort);
         content.addView(browseSortButton,lp(310,49));
+        content.addView(button("فیلترهای پیشرفته",false,this::ultimateBrowseFilters),lp(245,49));
         listingContainer=vertical();content.addView(listingContainer,lp(-1,-2));
         nextPage=button("نمایش عنوان‌های بیشتر",true,this::fetchNextPage);
         LinearLayout.LayoutParams np=lp(272,53);np.topMargin=dp(16);content.addView(nextPage,np);
@@ -570,11 +591,27 @@ public final class MainActivity extends Activity {
             if(item!=null && seen.add(item.url))all.add(item);
         }
         List<FarsiPlexTitle> ordered=CatalogOrdering.order(all,browseSortMode,CatalogFirstSeen.snapshot(this),"");
+        ordered=UltimateDiscovery.filter(ordered,"",ultimateBrowseGenre,ultimateBrowseSince,ultimateBrowseUntil,
+            ultimateBrowseRating,new UltimateProgressStore(this).completedKeys(ordered),ultimateBrowseUnwatched);
+        ordered=ultimateVisible(ordered);
         listingContainer.removeAllViews();
         if(ordered.isEmpty())listingContainer.addView(text("در حال دریافت عنوان‌ها…",15,MUTED,false),lp(-1,74));
         else showGrid(listingContainer,ordered);
         if(tag instanceof String){View replacement=root.findViewWithTag(tag);
             if(replacement!=null && replacement!=focused && replacement.isFocusable())replacement.requestFocus();}
+    }
+    private void ultimateBrowseFilters(){
+        String[] choices={"نمایش همه", "فقط کمدی", "فقط درام", "از ۲۰۲۰", "امتیاز ۷ به بالا",
+                          "فقط تماشانشده‌ها", "تا سال ۲۰۰۰"};
+        new AlertDialog.Builder(this).setTitle("فیلتر فهرست‌های دریافت‌شده")
+            .setItems(choices,(d,n)->{
+                ultimateBrowseGenre=n==1?"comedy":n==2?"drama":"";
+                ultimateBrowseSince=n==3?2020:0;
+                ultimateBrowseUntil=n==6?2000:0;
+                ultimateBrowseRating=n==4?7:0;
+                ultimateBrowseUnwatched=n==5;
+                renderBrowsePages();
+            }).setNegativeButton("لغو",null).show();
     }
     private int columns(){
         float width=getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density;
@@ -832,6 +869,8 @@ public final class MainActivity extends Activity {
         String supporting=item.description;
         if(!item.cast.isEmpty())supporting+=(supporting.isEmpty()?"":"\n")+"بازیگران: "+item.cast;
         if(!item.runtime.isEmpty())supporting+=(supporting.isEmpty()?"":"   ·   ")+"مدت: "+item.runtime;
+        if(!item.director.isEmpty())supporting+=(supporting.isEmpty()?"":"   ·   ")+"کارگردان: "+item.director;
+        if(!item.country.isEmpty())supporting+=(supporting.isEmpty()?"":"   ·   ")+"کشور: "+item.country;
         if(supporting.isEmpty()&&!complete)supporting="در حال دریافت اطلاعات عنوان…";
         TextView summary=text(supporting,15,0xFFD3D7E0,false);
         summary.setTag("detail-description");summary.setMaxLines(3);summary.setEllipsize(TextUtils.TruncateAt.END);
@@ -855,6 +894,12 @@ public final class MainActivity extends Activity {
         }else if(completed){
             TextView watched=text("✓  تماشا شده",13,0xFF7EE0B0,true);
             watched.setTag("detail-watch-state");infoPanel.addView(watched,lp(-1,28));
+        }else if(!"series".equals(item.kind)){
+            UltimateProgressStore.Progress previous=new UltimateProgressStore(this).get(UltimateIdentity.contentKey(item));
+            if(previous!=null&&previous.position>0){
+                infoPanel.addView(text(previous.complete?"✓  تماشا شده":"▶  ادامه از "+PlaybackResumePolicy.time(previous.position),
+                    13,0xFFFFC857,true),lp(-1,28));
+            }
         }
 
         LinearLayout controls=vertical();detailControls=controls;controls.setTag("detail-actions");
@@ -889,7 +934,22 @@ public final class MainActivity extends Activity {
         LinearLayout secondaryRow=horizontal();secondaryRow.setTag("detail-action-secondary-row");
         LinearLayout.LayoutParams secondaryParams=lp(-1,46);secondaryParams.topMargin=dp(5);controls.addView(secondaryRow,secondaryParams);
         TextView backAction=button("بازگشت",false,this::backToList);backAction.setTag("detail-back");backAction.setTextSize(14);
-        secondaryRow.addView(backAction,new LinearLayout.LayoutParams(0,dp(44),showAlternative?0.9f:1f));
+        secondaryRow.addView(backAction,new LinearLayout.LayoutParams(0,dp(44),0.65f));
+        if(!"series".equals(item.kind)&&!item.candidates.isEmpty()){
+            gap(secondaryRow,7);
+            TextView sourceAction=button("انتخاب منبع",false,()->ultimateChooseSource(item));
+            sourceAction.setTag("detail-source");sourceAction.setTextSize(13);
+            secondaryRow.addView(sourceAction,new LinearLayout.LayoutParams(0,dp(44),1.15f));
+        }
+        if("series".equals(item.kind)){
+            gap(secondaryRow,7);
+            UltimateFollowStore follows=new UltimateFollowStore(this);
+            TextView followAction=button(follows.following(item)?"✓ دنبال می‌کنم":"+ دنبال کردن",false,()->{
+                boolean next=!follows.following(item);follows.follow(item,next);showDetail(item,complete);
+            });
+            followAction.setTag("detail-follow");followAction.setTextSize(13);
+            secondaryRow.addView(followAction,new LinearLayout.LayoutParams(0,dp(44),1.15f));
+        }
         if(showAlternative){
             gap(secondaryRow,7);
             TextView alternativeAction=button("بررسی منبع جایگزین",false,()->resolveWithAI(item));
@@ -905,9 +965,12 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams posterParams=lp(160,230);posterParams.leftMargin=dp(20);hero.addView(posterFrame,posterParams);
         LinearLayout.LayoutParams heroLayout=lp(-1,"series".equals(item.kind)?422:410);
         heroLayout.bottomMargin=dp(12);content.addView(heroFrame,heroLayout);
+        content.addView(button("گزینه‌های این عنوان",false,()->ultimateTitleOptions(item)),lp(240,46));
+        if(!item.trailerUrl.isEmpty())content.addView(button("▶ تماشای تریلر",false,()->ultimateTrailer(item)),lp(220,46));
 
         if("series".equals(item.kind)){
             int newly=complete?SeriesTracker.observe(this,item.url,item.episodes.size()):0;
+            if(complete)new UltimateFollowStore(this).observe(item,item.episodes);
             title("فصل‌ها و قسمت‌ها",complete?(newly>0?newly+" قسمت جدید از آخرین بازدید":"یک فصل را انتخاب کن و با ریموت حرکت کن"):"در حال دریافت قسمت‌ها…");
             List<LibraryStore.Entry> episodesCompleted=library.completed();
             List<LibraryStore.Entry> episodesWatched=library.watched();
@@ -1087,12 +1150,20 @@ public final class MainActivity extends Activity {
     }
     private void play(String title,String url){play(title,url,"");}
     private void play(String title,String url,String page){
-        if(!StreamDetector.isDirectMedia(url)){Toast.makeText(this,"منبع پخش معتبر نیست",Toast.LENGTH_LONG).show();return;}
+        if(!StreamDetector.isDirectMedia(url)){ultimateManualRequest="";Toast.makeText(this,"منبع پخش معتبر نیست",Toast.LENGTH_LONG).show();return;}
         Intent intent=new Intent(this,PlayerActivity.class);
+        intent.putExtra("ultimate_manual",ultimateManualRequest);ultimateManualRequest="";
+        FarsiPlexTitle related=selected!=null&&selected.url.equals(page)?selected:null;
+        if(related!=null)intent.putExtra("ultimate_key",UltimateIdentity.contentKey(related));
+        if(parentSeries!=null)intent.putExtra("ultimate_series_key",UltimateIdentity.contentKey(parentSeries));
         intent.putExtra(PlayerActivity.EXTRA_TITLE,title);intent.putExtra(PlayerActivity.EXTRA_URL,url);
         if(StreamDetector.isHttpsUrl(page))intent.putExtra(PlayerActivity.EXTRA_PAGE_URL,page);
         List<PlaybackCandidate> candidates=new ArrayList<>();
         if(selected!=null&&selected.url.equals(page))candidates.addAll(selected.candidates);
+        if(!candidates.isEmpty()){
+            String last=new UltimateSourceStore(this).lastGood(UltimateIdentity.contentKey(selected));
+            candidates=UltimateSourceChoice.rank(candidates,"",last,1080);
+        }
         boolean exists=false;for(PlaybackCandidate c:candidates)if(c.url.equals(url))exists=true;
         if(!exists)candidates.add(0,new PlaybackCandidate(url,page,0,false));
         intent.putExtra("candidates",CandidateCodec.encode(candidates));
@@ -1154,6 +1225,7 @@ public final class MainActivity extends Activity {
         List<FarsiPlexTitle> filtered=DiscoveryPolicy.filter(searchRaw,
             new DiscoveryPolicy.Filter(filterKind,filterGenre,filterYear,filterRating));
         filtered=CatalogOrdering.order(filtered,searchSortMode,CatalogFirstSeen.snapshot(this),searchTerm);
+        filtered=ultimateVisible(filtered);
         if(filtered.isEmpty()){TextView empty=text(error!=null?error:
             "با این فیلتر عنوانی پیدا نشد. فیلترها را پاک کن یا جست‌وجو را تغییر بده.",15,MUTED,false);empty.setTag("search-empty");searchResultsView.addView(empty,lp(-1,85));}
         else{searchResultsView.addView(text(filtered.size()+" عنوان از "+searchRaw.size()+" نتیجه",14,MUTED,false),lp(-1,37));
@@ -1320,19 +1392,20 @@ public final class MainActivity extends Activity {
         catalog.addAll(loadedSeries);
         if(movieSlot!=null){
             List<FarsiPlexTitle> rated=CatalogOrdering.topRated(catalog);
-            homeRow(movieSlot,"برترین آثار","فقط بر اساس امتیاز ثبت‌شده در کاتالوگ",rated);
+            homeRow(movieSlot,"برترین آثار","فقط بر اساس امتیاز ثبت‌شده در کاتالوگ",ultimateVisible(rated));
             movieSlot.setVisibility(preferences.getBoolean("home_movies",true)&&!rated.isEmpty()?View.VISIBLE:View.GONE);
         }
         if(recentSlot!=null){
             homeRow(recentSlot,"تازه شناسایی‌شده‌ها","اولین مشاهده روی همین دستگاه؛ نه تاریخ افزودن به سایت",
-                CatalogOrdering.order(catalog,CatalogOrdering.FIRST_SEEN,CatalogFirstSeen.snapshot(this),""));
+                ultimateVisible(CatalogOrdering.order(catalog,CatalogOrdering.FIRST_SEEN,CatalogFirstSeen.snapshot(this),"")));
             recentSlot.setVisibility(preferences.getBoolean("home_recent_added",true)&&!catalog.isEmpty()?View.VISIBLE:View.GONE);
         }
-        homeRow(favoriteSlot,"فهرست من","ذخیره‌شده برای همین پروفایل",favorites);
+        homeRow(favoriteSlot,"فهرست من","ذخیره‌شده برای همین پروفایل",ultimateVisible(favorites));
         favoriteSlot.setVisibility(preferences.getBoolean("home_favorites",true)?View.VISIBLE:View.GONE);
         homeRow(recommendSlot,"پیشنهاد برای شما","بر اساس ژانر لیست من و تماشای اخیر؛ فقط روی این دستگاه",
-            Recommendations.rank(CatalogOrdering.order(catalog,CatalogOrdering.NEWEST,null,""),
-                favorites,new LibraryStore(this).watched()));
+            UltimateTasteEngine.rank(ultimateVisible(CatalogOrdering.order(catalog,CatalogOrdering.NEWEST,null,"")),
+                favorites,new UltimateProgressStore(this).completedKeys(catalog),
+                new UltimateWatchlist(this).markedIn("dislike",catalog),12));
         recommendSlot.setVisibility(preferences.getBoolean("home_recommendations",true)?View.VISIBLE:View.GONE);
         if(focus!=null){View v=root.findViewWithTag(focus);if(v!=null)v.requestFocus();}
     }
@@ -1462,7 +1535,7 @@ public final class MainActivity extends Activity {
     }
     private void settingsUnlocked(){
         SharedPreferences playerPrefs=ProfileStore.data(this,"player_preferences");ProfileStore profiles=new ProfileStore(this);
-        String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی","نگهداری، آپدیت GitHub و پشتیبان خانوادگی","شخصی‌سازی صفحهٔ خانه","قفل PIN تنظیمات","افزودن منابع بین‌المللی (Stremio)"};
+        String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی","نگهداری، آپدیت GitHub و پشتیبان خانوادگی","شخصی‌سازی صفحهٔ خانه","قفل PIN تنظیمات","افزودن منابع بین‌المللی (Stremio)","مرکز سلامت پخش","مجموعه‌های فیلم","نمایش خانوادگی آزمایشی","بررسی قسمت‌های جدید"};
         if(BuildConfig.DEBUG){
             options=java.util.Arrays.copyOf(options,options.length+1);
             options[options.length-1]="کاتالوگ آزمایشی: "+(source.experimentalCatalogEnabled()?"روشن":"خاموش");
@@ -1475,13 +1548,170 @@ public final class MainActivity extends Activity {
             case 6:new AlertDialog.Builder(this).setTitle("زبان سرویس گفتار").setItems(new String[]{"فارسی","English"},(a,i)->playerPrefs.edit().putString("voice",i==0?"fa-IR":"en-US").apply()).show();break;
             case 7:transfer(false);break;case 8:transfer(true);break;case 9:configureAI(null);break;case 10:startActivity(new Intent(this,MaintenanceActivity.class));break;
             case 11:customizeHome();break;case 12:pinSettings();break;case 13:configureStremioAddon();break;
-            case 14:source.setExperimentalCatalogEnabled(!source.experimentalCatalogEnabled());home();break;
+            case 14:ultimateDiagnostics();break;case 15:ultimateCollections();break;
+            case 16:ultimateKidSettings();break;case 17:ultimateScanFollowed(true);break;
+            case 18:source.setExperimentalCatalogEnabled(!source.experimentalCatalogEnabled());home();break;
         }}).setNegativeButton("بازگشت",null).show();
+    }
+    private List<FarsiPlexTitle> ultimateVisible(List<FarsiPlexTitle> titles){
+        List<FarsiPlexTitle> out=new ArrayList<>();UltimateKidMode kids=new UltimateKidMode(this);
+        UltimateWatchlist list=new UltimateWatchlist(this);
+        for(FarsiPlexTitle item:titles)if(item!=null&&kids.visible(item)&&
+            !list.marked("hidden",UltimateIdentity.contentKey(item)))out.add(item);
+        return out;
+    }
+    private void ultimateCollections(){
+        String[] labels={"کمدی", "از سال ۲۰۲۰", "کلاسیک‌های قبل از ۲۰۰۰", "امتیاز ۷ به بالا", "تماشا نشده", "پنهان‌شده‌ها", "بعداً ببینم", "مجموعه‌های شخصی"};
+        new AlertDialog.Builder(this).setTitle("مجموعه‌های فیلم و سریال")
+            .setItems(labels,(d,n)->{
+                List<FarsiPlexTitle> catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
+                List<FarsiPlexTitle> items=n==4?UltimateDiscovery.filter(catalog,"","",0,0,0,
+                    new UltimateProgressStore(this).completedKeys(catalog),true):
+                    UltimateDiscovery.collection(catalog,n==0?"comedy":n==1?"new":n==2?"classic":n==3?"top":"all");
+                if(n==7){ultimateChooseCollection();return;}
+                if(n==5||n==6){UltimateWatchlist states=new UltimateWatchlist(this);
+                    items=new ArrayList<>();for(FarsiPlexTitle item:catalog)
+                        if(new UltimateKidMode(this).visible(item)&&states.marked(n==5?"hidden":"later",UltimateIdentity.contentKey(item)))items.add(item);
+                }else items=ultimateVisible(items);
+                begin("collections");title(labels[n],"فقط بر اساس اطلاعات دریافت‌شده و همین پروفایل");
+                if(items.isEmpty())content.addView(text("عنوانی در این مجموعه نیست.",17,MUTED,false),lp(-1,65));
+                else showGrid(content,UltimateDiscovery.unique(items));
+            }).setNegativeButton("لغو",null).show();
+    }
+    private void ultimateTrailer(FarsiPlexTitle item){
+        String url=item.trailerUrl;
+        if(StreamDetector.isDirectMedia(url)){
+            Intent intent=new Intent(this,PlayerActivity.class);
+            intent.putExtra(PlayerActivity.EXTRA_TITLE,"تریلر · "+item.name);
+            intent.putExtra(PlayerActivity.EXTRA_URL,url);
+            intent.putExtra("ultimate_trailer",true);
+            startActivity(intent);return;
+        }
+        if(url.startsWith("https://www.youtube.com/watch?v=")&&url.length()==43){
+            try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)));}
+            catch(Exception ignored){info("برنامه‌ای برای بازکردن تریلر پیدا نشد.");}
+            return;
+        }
+        info("تریلر مستقیم معتبر موجود نیست.");
+    }
+    private void ultimateChooseSource(FarsiPlexTitle item){
+        List<PlaybackCandidate> candidates=UltimateSourceChoice.rank(item.candidates,"",
+            new UltimateSourceStore(this).lastGood(UltimateIdentity.contentKey(item)),1080);
+        if(candidates.isEmpty()){info("هنوز لینک قابل‌پخش معتبری شناسایی نشده است.");return;}
+        String[] choices=new String[candidates.size()];
+        for(int i=0;i<candidates.size();i++)choices[i]="منبع "+(i+1)+" · "+UltimateSourceChoice.quality(candidates.get(i).height);
+        new AlertDialog.Builder(this).setTitle("انتخاب دستی منبع")
+            .setItems(choices,(d,n)->{
+                PlaybackCandidate c=candidates.get(n);
+                ultimateManualRequest=c.url;
+                play(item.name,c.url,item.url);
+            }).setNegativeButton("لغو",null).show();
+    }
+    private void ultimateScanFollowed(boolean manually){
+        android.content.SharedPreferences scanned=ProfileStore.data(this,"ultimate_follow_scan");
+        long now=System.currentTimeMillis();
+        if(!manually&&now-scanned.getLong("last",0)<4L*60*60*1000)return;
+        UltimateFollowStore follows=new UltimateFollowStore(this);
+        List<UltimateFollowStore.Followed> all=follows.all();
+        if(all.isEmpty()){
+            if(manually)info("ابتدا یک سریال را دنبال کن.");return;
+        }
+        scanned.edit().putLong("last",now).apply();
+        final int limit=Math.min(6,all.size());final int[] finished={0},found={0};
+        for(int i=0;i<limit;i++){
+            UltimateFollowStore.Followed f=all.get(i);
+            FarsiPlexTitle item=new FarsiPlexTitle(f.url,"series",f.name);item.year=f.year;
+            source.detail(item,(value,error)->{
+                int newly=value!=null&&value.episodes!=null?follows.observe(item,value.episodes):0;
+                runOnUiThread(()->{
+                    if(destroyed)return;
+                    found[0]+=newly;finished[0]++;
+                    if(newly>0)info(f.name+" · "+newly+" قسمت جدید شناسایی شد.");
+                    else if(manually&&finished[0]>=limit&&found[0]==0)
+                        info("قسمت جدیدِ تأییدشده‌ای در فهرست‌های دریافت‌شده پیدا نشد.");
+                });
+            });
+        }
+    }
+    private void ultimateChooseCollection(){
+        UltimateCollectionsStore store=new UltimateCollectionsStore(this);
+        List<String> names=store.names();
+        String[] opts=new String[names.size()+1];
+        for(int i=0;i<names.size();i++)opts[i]=names.get(i);
+        opts[names.size()]="+ ساخت مجموعهٔ جدید";
+        new AlertDialog.Builder(this).setTitle("مجموعه‌های شخصی")
+            .setItems(opts,(d,n)->{
+                if(n==names.size()){
+                    EditText name=new EditText(this);name.setSingleLine(true);name.setHint("نام مجموعه");
+                    new AlertDialog.Builder(this).setTitle("ساخت مجموعهٔ جدید")
+                        .setView(name).setNegativeButton("لغو",null)
+                        .setPositiveButton("بساز",(dlg,w)->{
+                            if(store.create(name.getText().toString()))ultimateChooseCollection();
+                            else info("نام معتبر نیست یا تعداد مجموعه‌ها به حد مجاز رسیده است.");
+                        }).show();
+                    return;
+                }
+                String title=names.get(n);
+                List<FarsiPlexTitle> catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
+                List<FarsiPlexTitle> items=new ArrayList<>();
+                for(FarsiPlexTitle item:catalog)
+                    if(new UltimateKidMode(this).visible(item)&&store.contains(title,UltimateIdentity.contentKey(item)))items.add(item);
+                begin("collections");title(title,"مجموعهٔ همین پروفایل");
+                if(items.isEmpty())content.addView(text("هنوز فیلمی به این مجموعه اضافه نشده است.",17,MUTED,false),lp(-1,70));
+                else showGrid(content,UltimateDiscovery.unique(items));
+                content.addView(button("حذف این مجموعه",false,()->new AlertDialog.Builder(this)
+                    .setTitle("این مجموعه حذف شود؟").setNegativeButton("لغو",null)
+                    .setPositiveButton("حذف",(a,b)->{store.remove(title);home();}).show()),lp(210,48));
+            }).setNegativeButton("لغو",null).show();
+    }
+    private void ultimateAddToCollection(FarsiPlexTitle item){
+        UltimateCollectionsStore store=new UltimateCollectionsStore(this);
+        List<String> names=store.names();
+        if(names.isEmpty()){
+            info("ابتدا از بخش مجموعه‌های شخصی یک مجموعه بساز.");ultimateChooseCollection();return;
+        }
+        String key=UltimateIdentity.contentKey(item);String[] opts=new String[names.size()];
+        for(int i=0;i<names.size();i++)opts[i]=names.get(i)+(store.contains(names.get(i),key)?" ✓":"");
+        new AlertDialog.Builder(this).setTitle("افزودن به مجموعه")
+            .setItems(opts,(d,n)->{
+                String name=names.get(n);store.set(name,key,!store.contains(name,key));
+                info("فهرست "+name+" به‌روز شد.");
+            }).setNegativeButton("لغو",null).show();
+    }
+    private void ultimateTitleOptions(FarsiPlexTitle item){
+        UltimateWatchlist marks=new UltimateWatchlist(this);
+        String contentId=UltimateIdentity.contentKey(item);
+        String[] choices={marks.marked("later",contentId)?"حذف از بعداً ببینم":"ذخیره برای بعداً",
+            marks.marked("hidden",contentId)?"نمایش دوباره در کاتالوگ":"پنهان کردن این عنوان",
+            marks.marked("dislike",contentId)?"حذف از فهرست نامطلوب":"این عنوان رو پیشنهاد نده",
+            "منابع شناخته‌شده", "افزودن به مجموعهٔ شخصی"};
+        new AlertDialog.Builder(this).setTitle(item.name).setItems(choices,(d,n)->{
+            if(n==3){ultimateChooseSource(item);return;}
+            if(n==4){ultimateAddToCollection(item);return;}
+            String kind=n==0?"later":n==1?"hidden":"dislike";
+            marks.mark(kind,contentId,!marks.marked(kind,contentId));
+            info("تنظیم این عنوان برای پروفایل فعال ذخیره شد.");
+        }).setNegativeButton("بازگشت",null).show();
+    }
+    private void ultimateDiagnostics(){
+        new AlertDialog.Builder(this).setTitle("مرکز سلامت پخش")
+            .setMessage(new UltimateDiagnostics(this).summary()+"\n\nآدرس خصوصی و توکن ذخیره نمی‌شود.")
+            .setPositiveButton("بستن",null)
+            .setNeutralButton("پاک‌کردن آمار",(d,n)->new UltimateDiagnostics(this).reset()).show();
+    }
+    private void ultimateKidSettings(){
+        UltimateKidMode kids=new UltimateKidMode(this);
+        new AlertDialog.Builder(this).setTitle("نمایش خانوادگی آزمایشی")
+            .setMessage("این فقط فیلتر محافظه‌کارانهٔ ژانر روی کاتالوگ است، نه تضمین رده‌بندی سنی. آثار بدون برچسب خانوادگی مخفی می‌شوند.")
+            .setNegativeButton("لغو",null)
+            .setPositiveButton(kids.enabled()?"خاموش کردن":"روشن کردن",(d,n)->{
+                kids.enabled(!kids.enabled());home();
+            }).show();
     }
     private void historyScreen(){
         begin("history");title("تاریخچهٔ تماشا","از تاریخچهٔ بازدید صفحات جداست؛ فقط همین پروفایل");LibraryStore library=new LibraryStore(this);
         content.addView(button("موارد تمام‌شده",false,()->historyEntries(library.completed(),true)),lp(240,50));
-        content.addView(button("پاک‌کردن تاریخچه",false,()->new AlertDialog.Builder(this).setTitle("تاریخچه، پایان‌ها و ادامهٔ تماشا پاک شوند؟").setMessage("علاقه‌مندی‌ها باقی می‌مانند.").setNegativeButton("لغو",null).setPositiveButton("پاک‌کردن",(d,w)->{library.clearHistory();historyScreen();}).show()),lp(240,50));
+        content.addView(button("پاک‌کردن تاریخچه",false,()->new AlertDialog.Builder(this).setTitle("تاریخچه، پایان‌ها و ادامهٔ تماشا پاک شوند؟").setMessage("علاقه‌مندی‌ها باقی می‌مانند.").setNegativeButton("لغو",null).setPositiveButton("پاک‌کردن",(d,w)->{library.clearHistory();new UltimateProgressStore(this).clearAll();historyScreen();}).show()),lp(240,50));
         renderHistory(library.watched());
     }
     private void historyEntries(List<LibraryStore.Entry> list,boolean completed){begin("history");title(completed?"تمام‌شده‌ها":"تاریخچه","");renderHistory(list);}

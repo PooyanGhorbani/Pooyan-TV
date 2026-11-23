@@ -6,7 +6,7 @@ import java.util.List;
 /** Public title metadata; source page is NOT a playable media URL. */
 public final class FarsiPlexTitle {
     public final String url,kind;
-    public String name,poster="",description="",year="",genre="",publicStream="",playbackError="",rating="",cast="",runtime="";
+    public String name,poster="",description="",year="",genre="",publicStream="",playbackError="",rating="",cast="",runtime="",director="",country="",ageRating="",trailerUrl="";
     public int season,episode;
     public String stableId="";
     public final List<String> aliases=new ArrayList<>();
