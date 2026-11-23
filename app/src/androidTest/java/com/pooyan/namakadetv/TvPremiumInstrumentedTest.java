@@ -35,8 +35,8 @@ public class TvPremiumInstrumentedTest {
  }
  @Test public void rightEdgeAndMenuReturnWorkOnAllCatalogScreens(){
   android.content.Intent offline=new android.content.Intent(context(),MainActivity.class).putExtra(MainActivity.EXTRA_OFFLINE_UI_TEST,true);
-  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offline)){
-   for(String screen:new String[]{"home","movies","series","search"}){
+  for(String screen:new String[]{"home","movies","series","search"}){
+   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(offline)){
     View[] last={null};
     scenario.onActivity(a->{
      invoke(a,"begin",new Class[]{String.class},screen);
@@ -45,8 +45,14 @@ public class TvPremiumInstrumentedTest {
      invoke(a,"card",new Class[]{LinearLayout.class,FarsiPlexTitle.class},row,
          new FarsiPlexTitle("https://farsiplex.com/movie/edge-fixture/","movie","Edge fixture"));
      last[0]=row.getChildAt(0);
+    });
+    InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    scenario.onActivity(a->{
+     assertTrue(screen+" poster has completed layout",last[0].isLaidOut());
      assertTrue(last[0].requestFocus());
     });
+    InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    scenario.onActivity(a->assertSame(screen+" starts on the last poster",last[0],a.getCurrentFocus()));
     key(KeyEvent.KEYCODE_DPAD_RIGHT);
     scenario.onActivity(a->assertSame(screen+" RIGHT reaches the menu",field(a,"navigationBar"),a.getCurrentFocus().getParent()));
     key(KeyEvent.KEYCODE_DPAD_LEFT);
