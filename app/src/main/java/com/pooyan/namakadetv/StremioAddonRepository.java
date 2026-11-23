@@ -131,8 +131,8 @@ public final class StremioAddonRepository {
         org.json.JSONArray trailerStreams=obj.optJSONArray("trailerStreams");
         if(trailerStreams!=null)for(int i=0;i<Math.min(8,trailerStreams.length());i++){
             org.json.JSONObject tr=trailerStreams.optJSONObject(i);if(tr==null)continue;
-            String link=tr.optString("url","");
-            if(StreamDetector.isDirectMedia(link)){item.trailerUrl=link;break;}
+            String trailerLink=tr.optString("url","");
+            if(StreamDetector.isDirectMedia(trailerLink)){item.trailerUrl=trailerLink;break;}
         }
         if(item.trailerUrl.isEmpty()){
             org.json.JSONArray trailers=obj.optJSONArray("trailers");
