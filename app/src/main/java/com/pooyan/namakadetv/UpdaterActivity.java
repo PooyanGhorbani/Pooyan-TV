@@ -313,7 +313,9 @@ public final class UpdaterActivity extends Activity {
                 MessageDigest sha = MessageDigest.getInstance("SHA-256");
                 long size = 0;
                 try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(apk)) {
-                    if (c.getContentLengthLong() > UpdatePolicy.MAX_APK_BYTES)
+                    long contentLength = Build.VERSION.SDK_INT >= 24
+                            ? c.getContentLengthLong() : c.getContentLength();
+                    if (contentLength > UpdatePolicy.MAX_APK_BYTES)
                         throw new IllegalStateException("حجم APK بیش از حد مجاز است");
                     byte[] bytes = new byte[32768];
                     int n;
