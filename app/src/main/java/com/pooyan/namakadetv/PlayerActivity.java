@@ -251,15 +251,56 @@ public final class PlayerActivity extends Activity {
         controls.getChildAt(1).requestFocus();
     }
     private void showMoreControls(){
-        String[] labels={"پرش دستی ۹۰ ثانیه","سرعت پخش","کیفیت تصویر","مسیر صدا","زیرنویس","افزودن زیرنویس","اندازهٔ زیرنویس","تأخیر زیرنویس","جای زیرنویس","سبک زیرنویس","قسمت بعد","اندازهٔ تصویر","انتخاب منبع","رد کردن تیتراژ","ثبت پایان تیتراژ","حالت اینترنت و بافر","رد کردن تیتراژ پایانی"};
-        Runnable[] actions={()->seekBy(90000),this::chooseSpeed,()->chooseTrack(C.TRACK_TYPE_VIDEO),()->chooseTrack(C.TRACK_TYPE_AUDIO),()->chooseTrack(C.TRACK_TYPE_TEXT),this::addSubtitle,this::subtitleSize,this::subtitleDelay,this::subtitlePosition,this::subtitleStyle,()->showNext(true),()->{
-            zoomMode = !zoomMode;
-            playerView.setResizeMode(zoomMode ? AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    : AspectRatioFrameLayout.RESIZE_MODE_FIT);
-            toast(zoomMode ? "بزرگنمایی (ممکن است تصویر برش بخورد)" : "نمایش کامل تصویر");
-        },this::ultimateChoosePlayerSource,this::ultimateSkipIntro,this::ultimateMarkIntroEnd,this::ultimateBufferSettings,()->showNext(true)};
-        advancedDialog=new AlertDialog.Builder(this).setTitle("کنترل‌های پخش").setItems(labels,(dialog,which)->{actions[which].run();revealControls();}).setNegativeButton("بستن",null).create();
+        String[] labels={"کیفیت تصویر","صدا","زیرنویس","انتخاب منبع","بیشتر…"};
+        Runnable[] actions={()->chooseTrack(C.TRACK_TYPE_VIDEO),()->chooseTrack(C.TRACK_TYPE_AUDIO),
+            this::cleanSubtitleMenu,this::ultimateChoosePlayerSource,this::cleanAdvancedPlayback};
+        advancedDialog=new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+            .setTitle("تنظیمات پخش").setItems(labels,(dialog,which)->{
+                actions[which].run();revealControls();
+            }).setNegativeButton("بستن",null).create();
         advancedDialog.show();
+    }
+    private void cleanSubtitleMenu(){
+        String[] labels={"انتخاب زیرنویس","افزودن زیرنویس از لینک","تنظیم ظاهر و زمان‌بندی"};
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+            .setTitle("زیرنویس").setItems(labels,(d,n)->{
+                switch(n){case 0:chooseTrack(C.TRACK_TYPE_TEXT);break;
+                    case 1:addSubtitle();break;case 2:cleanSubtitleAdvanced();break;}
+            }).setNegativeButton("بستن",null).show();
+    }
+    private void cleanSubtitleAdvanced(){
+        String[] labels={"اندازهٔ زیرنویس","تأخیر زیرنویس","موقعیت زیرنویس","سبک زیرنویس"};
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+            .setTitle("تنظیمات پیشرفتهٔ زیرنویس").setItems(labels,(d,n)->{
+                switch(n){case 0:subtitleSize();break;case 1:subtitleDelay();break;
+                    case 2:subtitlePosition();break;case 3:subtitleStyle();break;}
+            }).setNegativeButton("بستن",null).show();
+    }
+    private void cleanAdvancedPlayback(){
+        String[] labels={"سرعت پخش","حالت اینترنت و بافر","اندازهٔ تصویر",
+            "پرش دستی ۹۰ ثانیه","قسمت بعد","تیتراژ آغازین سریال"};
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+            .setTitle("کنترل‌های پیشرفته").setItems(labels,(d,n)->{
+                switch(n){case 0:chooseSpeed();break;
+                    case 1:ultimateBufferSettings();break;
+                    case 2:zoomMode=!zoomMode;
+                        playerView.setResizeMode(zoomMode?AspectRatioFrameLayout.RESIZE_MODE_ZOOM:
+                            AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                        toast(zoomMode?"بزرگنمایی (ممکن است تصویر برش بخورد)":"نمایش کامل تصویر");break;
+                    case 3:seekBy(90000);break;
+                    case 4:showNext(true);break;
+                    case 5:cleanIntroMenu();break;}
+                revealControls();
+            }).setNegativeButton("بستن",null).show();
+    }
+    private void cleanIntroMenu(){
+        String[] labels={"رد کردن تیتراژ آغازین (نشانگر دستی)","ثبت پایان تیتراژ آغازین"};
+        new AlertDialog.Builder(this).setOnKeyListener(this::dialogMediaKey)
+            .setTitle("تیتراژ آغازین سریال").setMessage("نشانگر ابتدای سریال به‌صورت دستی ثبت می‌شود؛ تشخیص خودکار ویدئویی وجود ندارد.")
+            .setItems(labels,(d,n)->{
+                if(n==0)ultimateSkipIntro();else ultimateMarkIntroEnd();
+                revealControls();
+            }).setNegativeButton("بستن",null).show();
     }
     private TextView addControl(String label, Runnable run) {
         TextView v = TvUi.focusButton(this, label, false, () -> { run.run(); revealControls(); });

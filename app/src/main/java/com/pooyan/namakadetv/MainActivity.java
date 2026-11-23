@@ -168,6 +168,11 @@ public final class MainActivity extends Activity {
         navigation.setFocusable(false);
         TextView brand=text("POOYAN TV",18,WHITE,true);brand.setTag("navigation-brand");navigation.addView(brand,lp(-1,42));
         TextView subtitle=text("سینمای خانگی",12,MUTED,false);subtitle.setTag("navigation-subtitle");navigation.addView(subtitle,lp(-1,25));
+        TextView profileShortcut=button("◉  پروفایل",false,()->chooseProfile(false));
+        profileShortcut.setTag("nav:پروفایل‌ها");profileShortcut.setContentDescription("پروفایل‌ها");
+        profileShortcut.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_nav_profile,0,0,0);
+        profileShortcut.setCompoundDrawablePadding(dp(6));
+        profileShortcut.setTextSize(13);navigation.addView(profileShortcut,lp(-1,39));
         View divider=new View(this);divider.setBackgroundColor(0xFF2A3248);
         divider.setTag("navigation-divider");
         LinearLayout.LayoutParams dividerLp=lp(-1,1);dividerLp.topMargin=dp(10);dividerLp.bottomMargin=dp(12);navigation.addView(divider,dividerLp);
@@ -179,7 +184,6 @@ public final class MainActivity extends Activity {
         addNavigationItem(navigation,R.drawable.ic_nav_series,"سریال‌ها",active.equals("سریال‌ها"),()->browse("series"));
         addNavigationItem(navigation,R.drawable.ic_nav_list,"فهرست من",active.equals("فهرست من"),this::favorites);
         addNavigationItem(navigation,R.drawable.ic_nav_search,"جست‌وجو",active.equals("جست‌وجو"),this::askSearch);
-        addNavigationItem(navigation,R.drawable.ic_nav_profile,"پروفایل‌ها",active.equals("پروفایل‌ها"),()->chooseProfile(false));
         View spacer=new View(this);navigation.addView(spacer,new LinearLayout.LayoutParams(1,0,1));
         addNavigationItem(navigation,R.drawable.ic_nav_settings,"تنظیمات",false,this::settings);
         outer.addView(navigation,lp(176,-1));
@@ -339,10 +343,10 @@ public final class MainActivity extends Activity {
         featuredDescription=text("عنوان و اطلاعات فقط از داده‌های موجود در کاتالوگ نمایش داده می‌شوند.",16,0xFFC9D0E0,false);
         featuredDescription.setMaxLines(3);featuredDescription.setEllipsize(TextUtils.TruncateAt.END);story.addView(featuredDescription,lp(-1,-2));
         LinearLayout actions=horizontal();heroActions=actions;actions.setTag("hero-actions");
-        actions.addView(button("فیلم‌ها",true,()->{
+        actions.addView(button("مرور فیلم‌ها",true,()->{
             if(featured!=null)detail(featured);else browse("movie");
         }),lp(161,50));gap(actions,11);
-        actions.addView(button("سریال‌ها",false,()->{
+        actions.addView(button("مرور سریال‌ها",false,()->{
             if(featured!=null){toggleFavorite(featured);updateHeroFavoriteLabel();}else browse("series");
         }),lp(177,50));
         actions.getChildAt(0).setTag("home-primary");
@@ -369,8 +373,7 @@ public final class MainActivity extends Activity {
         addContinueWatching();
         continueSlot.setVisibility(preferences.getBoolean("home_continue",true)?View.VISIBLE:View.GONE);
         content.addView(button("امشب چی ببینم؟",false,this::surpriseMe),lp(245,48));
-        content.addView(button("مجموعه‌های فیلم",false,this::ultimateCollections),lp(245,48));
-        title("جدیدترین فیلم‌ها","بر اساس سال انتشارِ موجود در کاتالوگ");rail("movie");
+        title("جدیدترین فیلم‌ها","");rail("movie");
         movieSlot=vertical();recentSlot=vertical();favoriteSlot=vertical();recommendSlot=vertical();
         for(String key:HomeRowsPolicy.order(preferences.getString("home_row_order",""))){
             LinearLayout slot=HomeRowsPolicy.TOP.equals(key)?movieSlot:
@@ -380,9 +383,7 @@ public final class MainActivity extends Activity {
         }
         refreshHomeExtras();
         if(!offlineUiTest)heroHandler.postDelayed(()->{if(!destroyed&&!isFinishing())ultimateScanFollowed(false);},4500);
-        title("جدیدترین سریال‌ها","بر اساس سال انتشارِ موجود در کاتالوگ");rail("series");
-        content.addView(button("همهٔ فیلم‌ها",false,()->browse("movie")),lp(210,50));
-        content.addView(button("تاریخچهٔ تماشا",false,this::historyScreen),lp(230,50));
+        title("جدیدترین سریال‌ها","");rail("series");
     }
     /** Hero height in dp: scales with the screen but never below the v0.7.5 height, so rails stay reachable at 720p/1080p. */
     private int heroHeightDp(){
@@ -422,8 +423,8 @@ public final class MainActivity extends Activity {
             featuredDescription.setText("با دریافت داده از کاتالوگ، عنوان‌های واقعی اینجا نمایش داده می‌شوند.");
             featuredBackdrop.setImageDrawable(null);
             View movies=root.findViewWithTag("home-primary"),series=root.findViewWithTag("home-more");
-            if(movies instanceof TextView)((TextView)movies).setText("فیلم‌ها");
-            if(series instanceof TextView)((TextView)series).setText("سریال‌ها");
+            if(movies instanceof TextView)((TextView)movies).setText("مرور فیلم‌ها");
+            if(series instanceof TextView)((TextView)series).setText("مرور سریال‌ها");
         }else updateFeatured(heroSlides.get(heroIndex));
         scheduleHeroRotation();
     }
@@ -1347,11 +1348,47 @@ public final class MainActivity extends Activity {
         }}catch(Exception ignored){}
         preferences.edit().putString("favorites",json.toString()).apply();
     }
-    private void favorites(){
-        begin("favorites");title("علاقه‌مندی‌های من","ذخیره‌شده روی همین تلویزیون، بدون حساب کاربری");
-        List<FarsiPlexTitle> list=favoriteItems();
-        if(list.isEmpty())content.addView(text("هنوز عنوانی را ذخیره نکرده‌ای.",16,MUTED,false),lp(-1,73));
-        else showGrid(content,list);
+    private void favorites(){cleanMyList("favorites");}
+    private void cleanMyList(String mode){
+        begin("favorites");title("فهرست من","علاقه‌مندی‌ها، بعداً ببینم و سریال‌های دنبال‌شدهٔ همین پروفایل");
+        LinearLayout tabs=horizontal();tabs.setTag("my-list-tabs");
+        String[] names={"علاقه‌مندی‌ها","بعداً ببینم","دنبال‌شده‌ها","مجموعه‌ها"};
+        String[] modes={"favorites","later","followed","collections"};
+        for(int i=0;i<names.length;i++){
+            final int index=i;
+            TextView tab=button(names[i],mode.equals(modes[i]),()->{
+                if(index==3)ultimateCollections();else cleanMyList(modes[index]);
+            });
+            tab.setTextSize(13);tab.setTag("my-list:"+modes[i]);
+            tabs.addView(tab,new LinearLayout.LayoutParams(0,dp(48),1f));
+            if(i<names.length-1)gap(tabs,7);
+        }
+        content.addView(tabs,lp(-1,58));
+        if("followed".equals(mode)){
+            List<UltimateFollowStore.Followed> followed=new UltimateFollowStore(this).all();
+            if(followed.isEmpty())content.addView(text("سریالی را از صفحهٔ جزئیات دنبال کن.",16,MUTED,false),lp(-1,75));
+            for(UltimateFollowStore.Followed entry:followed){
+                FarsiPlexTitle item=new FarsiPlexTitle(entry.url,"series",entry.name);item.year=entry.year;
+                content.addView(button(entry.name,false,()->detail(item)),lp(-1,53));
+            }
+            content.addView(button("بررسی قسمت‌های جدید",false,()->ultimateScanFollowed(true)),lp(230,48));
+        }else{
+            List<FarsiPlexTitle> items=new ArrayList<>();
+            if("later".equals(mode)){
+                List<FarsiPlexTitle> catalog=new ArrayList<>(loadedMovies);catalog.addAll(loadedSeries);
+                // A previous session may have marked titles that are no longer in today's loaded rails.
+                // The v0.8.7 public metadata cache provides a bounded, private offline fallback.
+                UltimateCatalogCache cache=new UltimateCatalogCache(this);
+                catalog.addAll(cache.read("movie"));catalog.addAll(cache.read("series"));
+                UltimateWatchlist marks=new UltimateWatchlist(this);
+                for(FarsiPlexTitle item:catalog)if(marks.marked("later",UltimateIdentity.contentKey(item)))items.add(item);
+            }else items.addAll(favoriteItems());
+            // Never collapse separately saved favorite source links: dedupe only the local later-view.
+            items=ultimateVisible("later".equals(mode)?UltimateDiscovery.unique(items):items);
+            if(items.isEmpty())content.addView(text("در این بخش هنوز عنوانی موجود نیست. «بعداً ببینم» از کاتالوگ بارگذاری‌شده نمایش داده می‌شود.",15,MUTED,false),lp(-1,75));
+            else showGrid(content,items);
+        }
+        content.addView(button("تاریخچهٔ تماشا",false,this::historyScreen),lp(235,48));
     }
     @Override public void onBackPressed(){
         if("detail".equals(screen))backToList();
@@ -1393,15 +1430,15 @@ public final class MainActivity extends Activity {
         if(movieSlot!=null){
             List<FarsiPlexTitle> rated=CatalogOrdering.topRated(catalog);
             homeRow(movieSlot,"برترین آثار","فقط بر اساس امتیاز ثبت‌شده در کاتالوگ",ultimateVisible(rated));
-            movieSlot.setVisibility(preferences.getBoolean("home_movies",true)&&!rated.isEmpty()?View.VISIBLE:View.GONE);
+            movieSlot.setVisibility(preferences.getBoolean("home_movies",false)&&!rated.isEmpty()?View.VISIBLE:View.GONE);
         }
         if(recentSlot!=null){
             homeRow(recentSlot,"تازه شناسایی‌شده‌ها","اولین مشاهده روی همین دستگاه؛ نه تاریخ افزودن به سایت",
                 ultimateVisible(CatalogOrdering.order(catalog,CatalogOrdering.FIRST_SEEN,CatalogFirstSeen.snapshot(this),"")));
-            recentSlot.setVisibility(preferences.getBoolean("home_recent_added",true)&&!catalog.isEmpty()?View.VISIBLE:View.GONE);
+            recentSlot.setVisibility(preferences.getBoolean("home_recent_added",false)&&!catalog.isEmpty()?View.VISIBLE:View.GONE);
         }
         homeRow(favoriteSlot,"فهرست من","ذخیره‌شده برای همین پروفایل",ultimateVisible(favorites));
-        favoriteSlot.setVisibility(preferences.getBoolean("home_favorites",true)?View.VISIBLE:View.GONE);
+        favoriteSlot.setVisibility(preferences.getBoolean("home_favorites",false)?View.VISIBLE:View.GONE);
         homeRow(recommendSlot,"پیشنهاد برای شما","بر اساس ژانر لیست من و تماشای اخیر؛ فقط روی این دستگاه",
             UltimateTasteEngine.rank(ultimateVisible(CatalogOrdering.order(catalog,CatalogOrdering.NEWEST,null,"")),
                 favorites,new UltimateProgressStore(this).completedKeys(catalog),
@@ -1487,16 +1524,19 @@ public final class MainActivity extends Activity {
                     .show();
             }).show();
     }
+    private boolean cleanHomeRowDefault(String key){
+        return !"home_movies".equals(key)&&!"home_recent_added".equals(key)&&!"home_favorites".equals(key);
+    }
     private void customizeHome(){
         final String[] keys={"home_continue","home_movies","home_recent_added","home_favorites","home_recommendations"};
         final String[] labels={"ادامهٔ تماشا","برترین آثار","تازه شناسایی‌شده‌ها","فهرست من","پیشنهاد برای شما"};
         String[] options=new String[keys.length+1];
-        for(int i=0;i<keys.length;i++)options[i]=labels[i]+": "+(preferences.getBoolean(keys[i],true)?"نمایش":"مخفی");
+        for(int i=0;i<keys.length;i++)options[i]=labels[i]+": "+(preferences.getBoolean(keys[i],cleanHomeRowDefault(keys[i]))?"نمایش":"مخفی");
         options[keys.length]="ترتیب ردیف‌های پیشنهادی";
         new AlertDialog.Builder(this).setTitle("شخصی‌سازی صفحهٔ خانه")
             .setItems(options,(d,n)->{
                 if(n==keys.length){reorderHomeRows();return;}
-                preferences.edit().putBoolean(keys[n],!preferences.getBoolean(keys[n],true)).apply();
+                preferences.edit().putBoolean(keys[n],!preferences.getBoolean(keys[n],cleanHomeRowDefault(keys[n]))).apply();
                 if("home".equals(screen))home();customizeHome();
             }).setNegativeButton("بازگشت",null).show();
     }
@@ -1534,6 +1574,65 @@ public final class MainActivity extends Activity {
             }).show();
     }
     private void settingsUnlocked(){
+        String[] categories={"پروفایل و خانواده","پخش و زیرنویس","منابع و اتصال",
+            "ظاهر و صفحهٔ خانه","نگهداری و پیشرفته"};
+        new AlertDialog.Builder(this).setTitle("تنظیمات Pooyan TV")
+            .setItems(categories,(d,n)->cleanSettingsGroup(n))
+            .setNegativeButton("بستن",null).show();
+    }
+    private void cleanSettingsGroup(int group){
+        SharedPreferences playerPrefs=ProfileStore.data(this,"player_preferences");
+        ProfileStore profiles=new ProfileStore(this);
+        if(group==0){
+            String[] options={"پروفایل‌ها","نمایش انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),
+                "قفل PIN تنظیمات","نمایش خانوادگی آزمایشی"};
+            new AlertDialog.Builder(this).setTitle("پروفایل و خانواده").setItems(options,(d,n)->{
+                switch(n){case 0:chooseProfile(true);break;
+                    case 1:profiles.picker(!profiles.picker());cleanSettingsGroup(0);break;
+                    case 2:pinSettings();break;case 3:ultimateKidSettings();break;}
+            }).setNegativeButton("بازگشت",(d,n)->settingsUnlocked()).show();return;
+        }
+        if(group==1){
+            String[] options={"پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),
+                "شمارش قسمت بعد","آستانهٔ پایان تماشا","زبان جست‌وجوی صوتی",
+                "تاریخچه و موارد تماشاشده","زیرنویس و کیفیت: هنگام پخش"};
+            new AlertDialog.Builder(this).setTitle("پخش و زیرنویس").setItems(options,(d,n)->{
+                switch(n){case 0:playerPrefs.edit().putBoolean("autoplay",!playerPrefs.getBoolean("autoplay",true)).apply();cleanSettingsGroup(1);break;
+                    case 1:new AlertDialog.Builder(this).setTitle("زمان شمارش").setItems(new String[]{"۵ ثانیه","۱۰ ثانیه","۲۰ ثانیه"},(a,i)->playerPrefs.edit().putInt("countdown",new int[]{5,10,20}[i]).apply()).show();break;
+                    case 2:new AlertDialog.Builder(this).setTitle("درصد تماشا برای پایان").setItems(new String[]{"۹۰٪","۹۵٪","۹۷٪","۹۹٪"},(a,i)->new LibraryStore(this).completion(new int[]{90,95,97,99}[i])).show();break;
+                    case 3:new AlertDialog.Builder(this).setTitle("زبان سرویس گفتار").setItems(new String[]{"فارسی","English"},(a,i)->playerPrefs.edit().putString("voice",i==0?"fa-IR":"en-US").apply()).show();break;
+                    case 4:historyScreen();break;
+                    case 5:info("تنظیم کیفیت، صدا و زیرنویس از دکمهٔ ⋯ هنگام پخش در دسترس است.");break;}
+            }).setNegativeButton("بازگشت",(d,n)->settingsUnlocked()).show();return;
+        }
+        if(group==2){
+            String[] options={"افزونه‌های منابع بین‌المللی (Stremio)","اتصال اختیاری موتور قدیمی",
+                "مرکز سلامت پخش","بررسی دستی قسمت‌های جدید"};
+            new AlertDialog.Builder(this).setTitle("منابع و اتصال").setItems(options,(d,n)->{
+                switch(n){case 0:configureStremioAddon();break;case 1:configureAI(null);break;
+                    case 2:ultimateDiagnostics();break;case 3:ultimateScanFollowed(true);break;}
+            }).setNegativeButton("بازگشت",(d,n)->settingsUnlocked()).show();return;
+        }
+        if(group==3){
+            String[] options={"شخصی‌سازی ردیف‌های صفحهٔ خانه","مجموعه‌های فیلم و سریال"};
+            new AlertDialog.Builder(this).setTitle("ظاهر و صفحهٔ خانه").setItems(options,(d,n)->{
+                if(n==0)customizeHome();else ultimateCollections();
+            }).setNegativeButton("بازگشت",(d,n)->settingsUnlocked()).show();return;
+        }
+        String[] options=BuildConfig.DEBUG?
+            new String[]{"آپدیت GitHub و پشتیبان خانوادگی","خروجی دادهٔ همین پروفایل",
+                "ورود داده با تأیید","کاتالوگ آزمایشی: "+(source.experimentalCatalogEnabled()?"روشن":"خاموش"),"همهٔ تنظیمات قدیمی"}:
+            new String[]{"آپدیت GitHub و پشتیبان خانوادگی","خروجی دادهٔ همین پروفایل",
+                "ورود داده با تأیید","همهٔ تنظیمات قدیمی"};
+        new AlertDialog.Builder(this).setTitle("نگهداری و پیشرفته").setItems(options,(d,n)->{
+            if(n==0)startActivity(new Intent(this,MaintenanceActivity.class));
+            else if(n==1)transfer(false);
+            else if(n==2)transfer(true);
+            else if(BuildConfig.DEBUG&&n==3){source.setExperimentalCatalogEnabled(!source.experimentalCatalogEnabled());home();}
+            else legacySettingsUnlocked();
+        }).setNegativeButton("بازگشت",(d,n)->settingsUnlocked()).show();
+    }
+    private void legacySettingsUnlocked(){
         SharedPreferences playerPrefs=ProfileStore.data(this,"player_preferences");ProfileStore profiles=new ProfileStore(this);
         String[] options={"پروفایل‌ها","انتخاب پروفایل هنگام شروع: "+(profiles.picker()?"روشن":"خاموش"),"تاریخچه و موارد تمام‌شده","پخش خودکار قسمت بعد: "+(playerPrefs.getBoolean("autoplay",true)?"روشن":"خاموش"),"شمارش قسمت بعد","آستانهٔ پایان","زبان جست‌وجوی صوتی","خروجی دادهٔ همین پروفایل","ورود داده با تأیید","اتصال اختیاری موتور قدیمی","نگهداری، آپدیت GitHub و پشتیبان خانوادگی","شخصی‌سازی صفحهٔ خانه","قفل PIN تنظیمات","افزودن منابع بین‌المللی (Stremio)","مرکز سلامت پخش","مجموعه‌های فیلم","نمایش خانوادگی آزمایشی","بررسی قسمت‌های جدید"};
         if(BuildConfig.DEBUG){
