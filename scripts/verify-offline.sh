@@ -1,37 +1,54 @@
-#!/usr/bin/env sh
+#!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 javac -d "$TMP" \
-    app/src/main/java/com/pooyan/namakadetv/StreamDetector.java \
-    app/src/main/java/com/pooyan/namakadetv/SiteCatalog.java \
-    app/src/main/java/com/pooyan/namakadetv/SearchEngine.java \
-    app/src/main/java/com/pooyan/namakadetv/PosterPolicy.java \
-    app/src/main/java/com/pooyan/namakadetv/SourceUpdatePolicy.java \
-    app/src/main/java/com/pooyan/namakadetv/PlaybackResumePolicy.java \
-    app/src/main/java/com/pooyan/namakadetv/SourceDiagnostics.java \
-    tests/StreamDetectorTest.java tests/SiteCatalogTest.java \
-    tests/SearchEngineTest.java tests/PosterPolicyTest.java tests/SourceUpdatePolicyTest.java \
-    tests/PlaybackResumePolicyTest.java tests/SourceDiagnosticsTest.java
+ app/src/main/java/com/pooyan/namakadetv/StreamDetector.java \
+ app/src/main/java/com/pooyan/namakadetv/PlaybackResumePolicy.java \
+ app/src/main/java/com/pooyan/namakadetv/FarsiPlexUrlPolicy.java \
+ app/src/main/java/com/pooyan/namakadetv/FarsiPlexTitle.java \
+ app/src/main/java/com/pooyan/namakadetv/PlaybackCandidate.java \
+ app/src/main/java/com/pooyan/namakadetv/SearchPolicy.java \
+ app/src/main/java/com/pooyan/namakadetv/CatalogIdentity.java \
+ app/src/main/java/com/pooyan/namakadetv/CatalogMerge.java \
+ app/src/main/java/com/pooyan/namakadetv/ImageUrlPolicy.java \
+ app/src/main/java/com/pooyan/namakadetv/PosterPolicy.java \
+ app/src/main/java/com/pooyan/namakadetv/TvPosterFocusPolicy.java \
+ app/src/main/java/com/pooyan/namakadetv/AiResolverUrlPolicy.java \
+ tests/StreamDetectorTest.java tests/PlaybackResumePolicyTest.java \
+ tests/FarsiPlexUrlPolicyTest.java tests/PosterPolicyTest.java \
+ tests/TvPosterFocusPolicyTest.java tests/AiResolverUrlPolicyTest.java \
+ tests/CatalogMergeSmokeTest.java tests/ImagePolicySmokeTest.java
 java -cp "$TMP" StreamDetectorTest
-java -cp "$TMP" SiteCatalogTest
-java -cp "$TMP" SearchEngineTest
-java -cp "$TMP" PosterPolicyTest
-java -cp "$TMP" SourceUpdatePolicyTest
 java -cp "$TMP" PlaybackResumePolicyTest
-java -cp "$TMP" SourceDiagnosticsTest
+java -cp "$TMP" FarsiPlexUrlPolicyTest
+java -cp "$TMP" PosterPolicyTest
+java -cp "$TMP" TvPosterFocusPolicyTest
+java -cp "$TMP" AiResolverUrlPolicyTest
+java -cp "$TMP" CatalogMergeSmokeTest
+java -cp "$TMP" ImagePolicySmokeTest
+python3 scripts/check-symbols.py
 javac -d "$TMP" tools/JavaParseCheck.java
 java -cp "$TMP" JavaParseCheck app/src/main/java
-python3 - <<'PY'
-import xml.etree.ElementTree as ET
-ET.parse('app/src/main/AndroidManifest.xml')
-print('PASS AndroidManifest.xml XML parse')
+python3 - <<'PYSOURCECHECK'
 from pathlib import Path
-manifest = Path('app/src/main/AndroidManifest.xml').read_text()
-assert '@string/app_name' in manifest
-assert 'Pooyan TV' in Path('app/src/main/res/values/strings.xml').read_text()
-assert 'Pooyan TV' in Path('README_FA.md').read_text()
-assert 'mobile.namakade.com:8443/serieses/rivals?' not in ''.join(p.read_text(errors='ignore') for p in Path('app/src').rglob('*.java'))
-print('PASS Pooyan TV branding and no embedded private Namakade link')
-PY
+from xml.etree import ElementTree as ET
+ET.parse('app/src/main/AndroidManifest.xml')
+sources='\n'.join(p.read_text() for p in Path('app/src/main/java').rglob('*.java'))
+main=Path('app/src/main/java/com/pooyan/namakadetv/MainActivity.java').read_text()
+gradle=Path('app/build.gradle').read_text()
+assert 'new WebView' not in sources
+assert 'UnifiedRepository' in main and 'NamakadeRepository' in sources
+assert 'source.list(' in main and 'source.detail(' in main and 'source.search(' in main
+assert 'TvPosterFocusPolicy' in main and 'requestFocus' in main
+assert 'FarsiPlexPlayback.resolveDetailed' in sources
+assert 'PlayerActivity.EXTRA_URL' in main
+assert "versionName '0.6.0'" in gradle
+assert "applicationIdSuffix '.preview060'" in gradle
+assert 'sk-proj-' not in sources and 'DEEPSEEK_API_KEY' not in sources
+assert 'AiResolverClient' in main and 'resolveWithAI' in main
+assert 'bringToFront()' not in main, 'Focus must never reorder poster children'
+assert 'FarsiPlex Edition' not in main and 'فیلم‌های FarsiPlex' not in main
+print('PASS provider-neutral cinematic UI, playback path, Android manifest, preview isolation')
+PYSOURCECHECK

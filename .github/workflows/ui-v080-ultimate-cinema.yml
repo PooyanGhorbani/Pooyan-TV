@@ -1,0 +1,182 @@
+name: Pooyan TV v0.8 Ultimate Cinema (preview checks only)
+
+on:
+  push:
+    branches: [ui/v0.8.0-ultimate-cinema]
+    paths:
+      - 'app/**'
+      - 'resolver-worker/**'
+      - 'tools/ci/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - '.github/workflows/ui-v080-ultimate-cinema.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-v080-ultimate-cinema-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-jvm-lint-worker:
+    name: Build / JUnit / lint / Worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: yes | sdkmanager --licenses > /dev/null || true
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Worker regression tests (no deployment)
+        run: node --test resolver-worker/resolver.test.mjs
+      - name: Android build, all JVM tests, instrumentation compile and lint
+        run: gradle --no-daemon --stacktrace assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug
+      - name: Save JVM and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v080-ultimate-jvm-lint-reports
+          path: |
+            app/build/reports/tests/**
+            app/build/test-results/**
+            app/build/reports/lint-results-*
+          if-no-files-found: ignore
+
+  android-tv-1080p:
+    name: Android TV / 1080p / remote suite + screenshots
+    needs: build-jvm-lint-worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          POOYAN_DIAGNOSTICS_DIR: ${{ runner.temp }}/pooyan-tv-diagnostics
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot
+          pre-emulator-launch-script: bash tools/ci/capture-emulator-output.sh
+          script: bash tools/ci/run-tv-instrumentation.sh full
+      - name: Save 1080p reports, diagnostics and app-rendered screens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v080-ultimate-tv-1080p-screenshots-and-reports
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/pooyan-tv-diagnostics/**
+          if-no-files-found: ignore
+
+  android-tv-logical-720p:
+    name: Android TV / tv_1080p AVD / logical 1280x720 / remote suite
+    needs: build-jvm-lint-worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          POOYAN_DIAGNOSTICS_DIR: ${{ runner.temp }}/pooyan-tv-diagnostics
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot
+          pre-emulator-launch-script: bash tools/ci/capture-emulator-output.sh
+          script: bash tools/ci/run-tv-instrumentation.sh logical-720
+      - name: Save logical 720p reports and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v080-ultimate-logical-720p-reports
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/pooyan-tv-diagnostics/**
+          if-no-files-found: ignore
+
+  dedicated-tv-720p-diagnostic:
+    name: Android TV / dedicated tv_720p AVD / known emulator issue
+    needs: build-jvm-lint-worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          POOYAN_DIAGNOSTICS_DIR: ${{ runner.temp }}/pooyan-tv-diagnostics
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_720p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot -verbose
+          pre-emulator-launch-script: bash tools/ci/capture-emulator-output.sh
+          script: bash tools/ci/run-tv-instrumentation.sh dpad-only
+      - name: Save dedicated 720p diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v080-ultimate-dedicated-tv-720p-diagnostics
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/pooyan-tv-diagnostics/**
+          if-no-files-found: ignore

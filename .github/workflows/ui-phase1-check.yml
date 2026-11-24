@@ -1,0 +1,230 @@
+name: Pooyan TV UI Phase 1 - validation only (NO release)
+
+on:
+  push:
+    branches: [ui/phase1]
+    paths:
+      - 'app/**'
+      - 'settings.gradle'
+      - 'build.gradle'
+      - 'gradle.properties'
+      - 'tools/ci/**'
+      - '.github/workflows/ui-phase1-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-phase1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-lint-unit:
+    name: Build / JVM / Lint / Worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: yes | sdkmanager --licenses > /dev/null || true
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolver Worker tests (no deployment)
+        run: node --test resolver-worker/resolver.test.mjs
+      - name: Build debug, JVM unit tests and Android lint
+        run: gradle --no-daemon --stacktrace assembleDebug assembleDebugAndroidTest testDebugUnitTest lintDebug
+      - name: Save unsigned dev debug APK for inspection only (do NOT install over stable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-unsigned-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Save test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-unit-lint-reports
+          path: |
+            app/build/reports/tests/**
+            app/build/test-results/**
+            app/build/reports/lint-results-*
+          if-no-files-found: ignore
+
+  android-tv-1080p:
+    name: Android TV / AVD tv_1080p / 1080p
+    needs: build-lint-unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: sudo chmod 666 /dev/kvm
+      - name: Record runner resources before Android TV emulator
+        run: |
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          df -h / /tmp
+          nproc
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot -logcat 'adbd:V,AndroidRuntime:E,lmkd:W,ActivityManager:E,Phase1FocusTest:I,*:S'
+          pre-emulator-launch-script: bash tools/ci/capture-emulator-output.sh
+          script: bash tools/ci/run-tv-instrumentation.sh full
+      - name: Record runner and ADB state after Android TV emulator
+        if: always()
+        run: |
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          df -h / /tmp
+          adb devices -l || true
+          pgrep -a -f 'emulator|qemu' || true
+          sudo dmesg --ctime 2>/dev/null | grep -Ei 'out of memory|oom-kill|killed process|qemu|emulator' | tail -n 80 || true
+      - name: Save Android TV instrumented reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-tv-tv_1080p-reports
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/pooyan-tv-diagnostics/**
+          if-no-files-found: ignore
+
+  android-tv-720p-avd-isolated:
+    name: Android TV / AVD tv_720p / isolated D-pad test
+    needs: build-lint-unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: sudo chmod 666 /dev/kvm
+      - name: Record runner resources before Android TV emulator
+        run: |
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          df -h / /tmp
+          nproc
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          POOYAN_DIAGNOSTICS_DIR: ${{ runner.temp }}/pooyan-tv-diagnostics
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_720p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot -verbose
+          pre-emulator-launch-script: bash tools/ci/capture-emulator-output.sh
+          script: bash tools/ci/run-tv-instrumentation.sh dpad-only
+      - name: Record runner and ADB state after Android TV emulator
+        if: always()
+        run: |
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          df -h / /tmp
+          adb devices -l || true
+          pgrep -a -f 'emulator|qemu' || true
+          sudo dmesg --ctime 2>/dev/null | grep -Ei 'out of memory|oom-kill|killed process|qemu|emulator' | tail -n 80 || true
+      - name: Save isolated 720p D-pad reports and live diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-tv-tv_720p-isolated-dpad-diagnostics
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/pooyan-tv-diagnostics/**
+          if-no-files-found: ignore
+
+  android-tv-logical-720p:
+    name: Android TV / stable tv_1080p AVD / logical 720p / all 10 tests
+    needs: build-lint-unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: sudo chmod 666 /dev/kvm
+      - name: Record runner resources before Android TV emulator
+        run: |
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          df -h / /tmp
+          nproc
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          POOYAN_DIAGNOSTICS_DIR: ${{ runner.temp }}/pooyan-tv-diagnostics
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072 -cores 2 -no-snapshot
+          pre-emulator-launch-script: bash tools/ci/capture-emulator-output.sh
+          script: bash tools/ci/run-tv-instrumentation.sh logical-720
+      - name: Record runner and ADB state after Android TV emulator
+        if: always()
+        run: |
+          free -h
+          grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo
+          df -h / /tmp
+          adb devices -l || true
+          pgrep -a -f 'emulator|qemu' || true
+          sudo dmesg --ctime 2>/dev/null | grep -Ei 'out of memory|oom-kill|killed process|qemu|emulator' | tail -n 80 || true
+      - name: Save logical 720p reports and live diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-tv-logical-720p-on-tv_1080p-reports
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+            ${{ runner.temp }}/pooyan-tv-diagnostics/**
+          if-no-files-found: ignore

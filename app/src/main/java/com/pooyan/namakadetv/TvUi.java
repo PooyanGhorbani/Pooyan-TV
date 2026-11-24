@@ -13,7 +13,43 @@ public final class TvUi {
     public static final int BLUE = Color.rgb(72, 145, 252);
     public static final int TEXT = Color.WHITE;
     public static final int MUTED = Color.rgb(169, 182, 206);
+    /** Visual-only design tokens shared by Home, Details and Player. */
+    public static final int SURFACE = 0xFF16161C;
+    public static final int SURFACE_RAISED = 0xFF22222B;
+    public static final int ACCENT = 0xFFE50914;
+    public static final int ACCENT_SOFT = 0xFF4A1820;
+    public static final int FOCUS_RING = 0xFFFFFFFF;
+    public static final int SCRIM = 0xCC08080B;
+    public static final int RADIUS_PILL = 100;
+    public static final int RADIUS_CARD = 14;
     private TvUi() {}
+    private static final java.util.Map<View,RemoteInputPolicy> selectStates=new java.util.WeakHashMap<>();
+
+    /** Reduced-motion: honour the system "remove animations" switch (animator scale 0). */
+    public static boolean reducedMotion(Context c) {
+        try {
+            return android.provider.Settings.Global.getFloat(c.getContentResolver(),
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f;
+        } catch (Exception e) { return false; }
+    }
+
+    /** Scale used for focused items; 1 when reduced motion is on. */
+    public static float focusScale(Context c, float scale) { return reducedMotion(c) ? 1f : scale; }
+
+    /** Focus ring colour that stays visible on the given fill: white on dark, accent on light. */
+    public static int ringColorFor(int fill) {
+        int r = Color.red(fill), g = Color.green(fill), b = Color.blue(fill);
+        double luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255d;
+        return luminance > 0.6 ? ACCENT : FOCUS_RING;
+    }
+
+    /** Rounded surface with an optional high-visibility focus ring (not colour change alone). */
+    public static GradientDrawable ring(int fill, int radius, boolean focused, Context c) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(fill); d.setCornerRadius(dp(c, radius));
+        if (focused) d.setStroke(dp(c, 3), ringColorFor(fill));
+        return d;
+    }
 
     public static int dp(Context c, float n) { return Math.round(n * c.getResources().getDisplayMetrics().density); }
 
@@ -31,20 +67,33 @@ public final class TvUi {
         return v;
     }
 
+    /** Consume paired OK events once, including gamepad Select, without key-repeat clicks. */
+    public static boolean activate(View view,int key,android.view.KeyEvent event){
+        if(key!=android.view.KeyEvent.KEYCODE_DPAD_CENTER&&key!=android.view.KeyEvent.KEYCODE_ENTER
+            &&key!=android.view.KeyEvent.KEYCODE_NUMPAD_ENTER&&key!=android.view.KeyEvent.KEYCODE_BUTTON_A)return false;
+        RemoteInputPolicy state=selectStates.get(view);
+        if(state==null){state=new RemoteInputPolicy();selectStates.put(view,state);}
+        if(state.select(event.getAction()==android.view.KeyEvent.ACTION_DOWN,event.getAction()==android.view.KeyEvent.ACTION_UP,event.isCanceled(),event.getRepeatCount()))view.performClick();
+        return true;
+    }
+    public static void remoteClick(View view){view.setOnKeyListener((v,k,e)->activate(v,k,e));}
     public static TextView focusButton(Context c, String label, boolean primary, Runnable onClick) {
         TextView v = text(c, label, 16, TEXT, true);
         v.setGravity(Gravity.CENTER);
-        int hp = dp(c, 18), vp = dp(c, 10);
+        int hp = dp(c, 20), vp = dp(c, 10);
         v.setPadding(hp, vp, hp, vp);
-        int normal = primary ? 0xFF2456AD : 0xFF242D40;
-        v.setBackground(bg(normal, 12, c));
+        int normal = primary ? ACCENT : 0xB322222B;
+        v.setBackground(ring(normal, RADIUS_PILL, false, c));
         v.setFocusable(true);
         v.setClickable(true);
         v.setOnClickListener(view -> onClick.run());
+        remoteClick(v);
         v.setOnFocusChangeListener((view, focus) -> {
-            v.setBackground(bg(focus ? BLUE : normal, 12, c));
-            v.setScaleX(focus ? 1.05f : 1f);
-            v.setScaleY(focus ? 1.05f : 1f);
+            v.setBackground(ring(focus ? FOCUS_RING : normal, RADIUS_PILL, focus, c));
+            v.setTextColor(focus ? BG : TEXT);
+            float scale = focusScale(c, focus ? 1.06f : 1f);
+            v.setScaleX(scale);
+            v.setScaleY(scale);
         });
         return v;
     }

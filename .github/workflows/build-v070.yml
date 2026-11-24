@@ -1,0 +1,152 @@
+name: Build Pooyan TV v0.7.0 (test and signed release)
+on:
+  push:
+    branches: [dev/v0.7.0-github-updater]
+    paths:
+      - 'app/**'
+      - 'config/**'
+      - 'docs/V070_RELEASE_FA.md'
+      - '.github/workflows/build-v070.yml'
+      - 'resolver-worker/**'
+      - 'scripts/**'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: pooyan-v070-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: yes | sdkmanager --licenses >/dev/null || true
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Worker tests (no deployment, no DeepSeek use)
+        run: node --test resolver-worker/resolver.test.mjs
+      - name: Build debug, JVM tests and lint
+        run: gradle --no-daemon assembleDebug testDebugUnitTest lintDebug
+      - name: Upload debug preview (NOT an update candidate)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pooyan-TV-v0.7.0-dev-preview
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pooyan-TV-v0.7.0-test-reports
+          path: |
+            app/build/reports/tests/**
+            app/build/test-results/**
+            app/build/reports/lint-results-*
+          if-no-files-found: ignore
+  emulator:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: gradle --no-daemon connectedDebugAndroidTest
+      - name: Instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pooyan-TV-v0.7.0-emulator-reports
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+          if-no-files-found: ignore
+  publish:
+    needs: [test, emulator]
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/dev/v0.7.0-github-updater'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: yes | sdkmanager --licenses >/dev/null || true
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Check permanent signing secrets
+        id: signing
+        env:
+          STORE_B64: ${{ secrets.POOYAN_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.POOYAN_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.POOYAN_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.POOYAN_KEY_PASSWORD }}
+        run: |
+          if [ -z "$STORE_B64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo 'Stable signing not configured. Debug preview is available from the test job; no release will be published.'
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+          umask 077
+          printf '%s' "$STORE_B64" | base64 -d > "$RUNNER_TEMP/pooyan-release.jks"
+          test -s "$RUNNER_TEMP/pooyan-release.jks"
+      - name: Build and verify stable signed APK
+        if: steps.signing.outputs.ready == 'true'
+        env:
+          POOYAN_SIGNING_STORE_FILE: ${{ runner.temp }}/pooyan-release.jks
+          POOYAN_KEYSTORE_PASSWORD: ${{ secrets.POOYAN_KEYSTORE_PASSWORD }}
+          POOYAN_KEY_ALIAS: ${{ secrets.POOYAN_KEY_ALIAS }}
+          POOYAN_KEY_PASSWORD: ${{ secrets.POOYAN_KEY_PASSWORD }}
+        run: |
+          gradle --no-daemon assembleRelease lintRelease
+          mkdir -p release
+          cp app/build/outputs/apk/release/app-release.apk release/Pooyan-TV-v0.7.0-premium-stable.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose release/Pooyan-TV-v0.7.0-premium-stable.apk
+          cd release
+          sha256sum Pooyan-TV-v0.7.0-premium-stable.apk > SHA256SUMS-v0.7.0.txt
+      - name: Publish GitHub Release only after verified tests
+        if: steps.signing.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd release
+          sha256sum -c SHA256SUMS-v0.7.0.txt
+          gh release view v0.7.0 >/dev/null 2>&1 || gh release create v0.7.0 --target "$GITHUB_SHA" --prerelease --title 'Pooyan TV v0.7.0 (stable signing)' --notes-file ../docs/V070_RELEASE_FA.md
+          gh release upload v0.7.0 Pooyan-TV-v0.7.0-premium-stable.apk SHA256SUMS-v0.7.0.txt --clobber

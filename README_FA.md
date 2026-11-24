@@ -1,36 +1,63 @@
-# Pooyan TV v0.1
+# Pooyan TV v0.4.2 — FarsiPlex + DeepSeek
 
-اپ Android TV با هفت منبع وب، کنترل ریموت، WebView، پلیر Media3 برای MP4/HLS/DASH، جست‌وجو، علاقه‌مندی و ادامهٔ تماشا.
+نمونهٔ **آزمایشی Android TV** با نام نمایشی **Pooyan TV**، کاتالوگ عمومی **فقط FarsiPlex** و موتور اختیاری بررسی لینک با API جست‌وجوی DeepSeek. این پروژه رسمی FarsiPlex نیست.
 
-## دریافت APK
+## قابلیت‌ها
 
-فایل نصب و SHA256 در [Release v0.1](https://github.com/PooyanGhorbani/Pooyan-TV/releases/tag/v0.1) قرار می‌گیرند. خروجی هر اجرای ساخت در بخش Actions نیز نگهداری می‌شود.
+- رابط بومی تلویزیون بدون WebView، خانه، پوستر فیلم و سریال، جست‌وجو و علاقه‌مندی‌ها
+- صفحهٔ جزئیات و لیست قسمت‌های سریال، کنترل D-pad و حرکت بین ردیف پوسترها (اصلاحات v0.4.1 حفظ شده)
+- پخش Media3 برای لینک‌های مستقیم HTTPS سازگار و مجاز که در HTML5 عمومی موجودند یا کاربر با اجازه وارد می‌کند
+- **جدید:** دکمهٔ «✨ بررسی پخش با DeepSeek» و بخش تنظیمات «⚙ AI» در اپ
+- **جدید:** Cloudflare Worker مجزا (`resolver-worker/`) که با DeepSeek Search به دنبال صفحه‌های عمومی **همان عنوان** در FarsiPlex می‌گردد؛ لینک مستقیم فقط وقتی پذیرفته می‌شود که در HTML5 آن صفحه واقعاً منتشر شده باشد، دامنهٔ رسانه در allowlist باشد و پاسخ HTTP نوع رسانهٔ قابل‌قبول داشته باشد
+- بدون نیاز به جاسازی **DEEPSEEK_API_KEY** در APK یا مخزن GitHub
 
-## ساخت
+## محدودیت اصلی
 
-JDK 17، Gradle 8.9، Android Gradle Plugin 8.7.3، SDK 35 و Media3 1.6.1 استفاده می‌شوند.
+هوش مصنوعی نمی‌تواند یک لینک رسانهٔ پنهان یا قفل‌شده ایجاد کند. اگر سایت فقط iframe، DRM، کوکی نشست، توکن خصوصی یا پلیر جاوااسکریپتی داشته باشد، اپ ممکن است فقط **کاتالوگ** را نشان دهد. این نسخه به API رسمی FarsiPlex یا حق پخش آثار دسترسی ندارد. بررسی HTTP لینک، تضمین پخش کامل در تلویزیون نیست.
 
-```sh
+## راه‌اندازی Worker با کلید شخصی DeepSeek
+
+در فولدر `resolver-worker/`:
+
+```bash
+npm install
+node --test resolver.test.mjs
+npx wrangler login
+npx wrangler secret put DEEPSEEK_API_KEY
+npx wrangler secret put TV_ACCESS_TOKEN
+npx wrangler deploy
+```
+
+**DEEPSEEK_API_KEY** همان کلید پولی DeepSeek است؛ **فقط در Secretهای Cloudflare وارد شود**. برای **TV_ACCESS_TOKEN** یک کد تصادفی قوی (حداقل ۲۴ کاراکتر) انتخاب کن؛ این کد با کلید API متفاوت است.
+
+در `wrangler.toml` فهرست `MEDIA_ALLOWED_HOSTS` را فقط با دامنه‌های CDN موردتأیید و مجاز پر کن. به‌صورت پیش‌فرض فقط `farsiplex.com,www.farsiplex.com` مجازند. بدون اجازه یا اطمینان از منبع، دامنهٔ ناشناس وارد نکن. همچنین بهتر است برای Worker محدودیت نرخ مصرف (Rate Limiting) در Cloudflare فعال کنی.
+
+پس از Deploy، در اپ Pooyan TV روی «⚙ AI» بزن و تنها **آدرس HTTPS Worker** و کد **TV_ACCESS_TOKEN** را وارد کن. **هرگز کلید پولی DeepSeek را در تلویزیون وارد نکن.** سپس صفحهٔ فیلم را باز کن و روی «✨ بررسی پخش با DeepSeek» بزن.
+
+## تست‌ها و ساخت APK
+
+پیش‌نیاز بیلد: JDK 17، Gradle 8.9، Android SDK API 35 و Build Tools 35، اینترنت برای وابستگی‌ها.
+
+```bash
 bash scripts/verify-offline.sh
-gradle --no-daemon assembleDebug assembleDebugAndroidTest lintDebug
+node --test resolver-worker/resolver.test.mjs
+gradle --no-daemon --stacktrace assembleDebug testDebugUnitTest lintDebug
 ```
 
-Workflow در `.github/workflows/build-apk.yml` با push به main یا اجرای دستی فعال می‌شود.
+در GitHub مخزن `https://github.com/PooyanGhorbani/Pooyan-TV`، سورس را روی شاخهٔ `dev/v0.4.2-deepseek` بارگذاری کن و از **Actions → Build Pooyan TV v0.4.2 DeepSeek Preview → Run workflow** بیلد بگیر. خروجی Artifacts با نام `Pooyan-TV-FarsiPlex-v0.4.2-Preview-APK` است.
 
-## نصب با حفظ داده
+نصب بعد از ساخت موفق روی تلویزیون متصل و مجاز:
 
-در ویندوز از `scripts/Install-PooyanTV.ps1 -TvAddress IP:PORT -ApkPath PATH` استفاده کنید. نصب با `adb install -r` انجام می‌شود و اسکریپت هرگز برنامه‌ای را حذف نمی‌کند. امضای Debug ممکن است بین اجراهای CI تغییر کند؛ در صورت ناسازگاری امضا، نصب متوقف می‌شود. برای انتشار پایدار بعدی کلید امضای خصوصی ثابت لازم است. versionName برابر 0.1 و versionCode برابر 5 است.
-
-## آزمون روی دستگاه
-
-APK آزمایش در artifact ساخت وجود دارد. پس از نصب آن، دستور زیر تست ریموت، علاقه‌مندی، پخش نمونهٔ عمومی، ذخیرهٔ پیشرفت، WebView، تمام‌صفحه و بررسی صفحات هفت منبع را اجرا می‌کند:
-
-```sh
-adb shell am instrument -w com.pooyan.namakadetv.test/androidx.test.runner.AndroidJUnitRunner
+```powershell
+./scripts/Install-PooyanTV-v0.4.2.ps1 -TvAddress "TV_IP:5555" -ApkPath "C:\\path\\to\\app-debug.apk"
 ```
 
-بررسی سایت‌ها، نتیجهٔ شبکه و صفحه را گزارش می‌کند؛ به معنای تأیید پخش تمام فیلم‌های آن‌ها نیست. گزارش نهایی دستگاه در `docs/DEVICE_RESULTS_FA.md` ثبت می‌شود.
+نسخهٔ Debug با شناسهٔ `com.pooyan.namakadetv.preview042` **جدا** از نسخه‌های v0.1 و preview041 نصب می‌شود؛ چیزی را Uninstall نکن. از وجود امضای معتبر APK و مجوز ADB اطمینان حاصل کن.
 
-## حریم خصوصی
+## آنچه واقعاً آزمایش شده
 
-نشانی‌های شخصی، کوکی‌ها و کلیدها در مخزن عمومی قرار نمی‌گیرند. لینک شخصی Namakade فقط در تنظیمات خود تلویزیون ثبت می‌شود. هیچ DRM یا ورود حسابی دور زده نمی‌شود. دسترسی، کدک، محدودیت منطقه‌ای و نیاز به حساب هر سایت می‌تواند متفاوت باشد.
+- تست‌های منطقی آفلاین Java و بررسی نمادها، سورس ۱۷ فایل و اعتبار XML مانیفست: **موفق**
+- شش تست خودکار Node برای Worker: **موفق**، شامل امنیت token، دامنه، لینک‌های HTML5، رد لینک خیالی DeepSeek و HTTP check
+- **انجام نشده:** کامپایل واقعی Android APK (SDK/Gradle در محیط فعلی موجود نیست)، دیپلوی Worker روی حساب تو، درخواست واقعی به DeepSeek (کلید در دسترس نیست)، اتصال مستقیم به FarsiPlex (DNS این محیط خطا داد)، تست واقعی روی شیائومی و آزمون کامل پخش فیلم
+
+**توصیه:** پیش از انتشار عمومی یا استفاده از پخش محتوا، شرایط استفاده و مجوز اتصال به منابع FarsiPlex را با صاحب سرویس بررسی کن. تعداد پوستر به معنی تعداد فیلم قابل‌پخش نیست.
